@@ -430,7 +430,9 @@ export function GameProvider({ children }) {
                 break;
             case 'hard_drop': {
                 // AI 硬降：使用函数式更新确保获取最新board
-                console.log('[AI] Hard drop starting, current Y:', currentPieceRef.current?.y);
+                const startY = currentPieceRef.current?.y;
+                const beforeCells = countBoardCells(board);
+                console.log(`[AI] Hard drop starting, Y: ${startY}, cells before: ${beforeCells}`);
                 
                 // 使用函数式更新，确保获取最新状态
                 setBoard(prevBoard => {
@@ -445,7 +447,18 @@ export function GameProvider({ children }) {
                     
                     // 锁定方块到最终位置
                     const lockedBoard = lockPiece(prevBoard, { ...piece, y: finalY });
+                    const lockedCells = countBoardCells(lockedBoard);
+                    
                     const { newBoard, linesCleared } = checkLines(lockedBoard);
+                    const afterCells = countBoardCells(newBoard);
+                    
+                    // 检查消除是否异常
+                    const cellsRemoved = lockedCells - afterCells;
+                    if (linesCleared > 0 && cellsRemoved !== linesCleared * 10) {
+                        console.error(`[AI] ERROR: 消除异常！消除${linesCleared}行，但移除了${cellsRemoved}格，期望${linesCleared * 10}格`);
+                    }
+                    
+                    console.log(`[AI] Hard drop: locked=${lockedCells}, after=${afterCells}, lines=${linesCleared}, removed=${cellsRemoved}`);
                     
                     // 更新分数
                     if (linesCleared > 0) {
@@ -469,7 +482,6 @@ export function GameProvider({ children }) {
                         setGameOver(true);
                     }
                     
-                    console.log('[AI] Hard drop complete, final Y:', finalY, 'lines:', linesCleared);
                     return newBoard;
                 });
                 
