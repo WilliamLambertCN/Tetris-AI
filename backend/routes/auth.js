@@ -23,7 +23,7 @@ router.post('/register', (req, res) => {
     }
 
     const userId = 'user_' + Date.now();
-    users.set(userId, { id: userId, username, password, email || '' });
+    users.set(userId, { id: userId, username, password, email: email || '' });
 
     res.status(201).json({ message: 'User registered successfully', data: { id: userId, username } });
 });
