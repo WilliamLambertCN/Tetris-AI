@@ -35,10 +35,11 @@ class TetrisAIController:
         self.ai.debug = True  # 启用调试输出
         self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
-        self.last_piece_id: Optional[int] = None  # 用于追踪当前方块
+        self.last_piece_y: int = -1  # 上次方块的Y位置
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
         self.processing_piece = False  # 标记是否正在处理当前方块
+        self.waiting_for_new_piece = False  # 是否在等待新方块
         
         # 配置日志级别
         self.verbose = True
@@ -137,19 +138,22 @@ class TetrisAIController:
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 新方块检测
-            is_new_piece = (
-                piece_type != self.last_piece_type or  # 类型变化
-                (not self.processing_piece and not self.action_queue and piece_y <= 2)  # 新方块且未处理
-            )
+            # 新方块检测：类型变化，或者方块从底部回到顶部（Y位置显著变化）
+            is_new_piece = False
+            if piece_type != self.last_piece_type:
+                # 类型变化，确定是新方块
+                is_new_piece = True
+            elif self.waiting_for_new_piece and piece_y <= 1 and self.last_piece_y > 5:
+                # 正在等待新方块，且Y位置从高处回到顶部
+                is_new_piece = True
             
             if is_new_piece:
                 self._handle_new_piece(state, piece_type)
                 self.processing_piece = True
+                self.waiting_for_new_piece = False
             
-            # 如果方块已经不在顶部区域，重置处理标记
-            if piece_y > 3:
-                self.processing_piece = False
+            # 更新上次Y位置
+            self.last_piece_y = piece_y
             
             # 阶段1: 执行动作队列（旋转和水平移动）
             if self.action_queue:
@@ -157,8 +161,10 @@ class TetrisAIController:
                 non_drop_actions = [a for a in self.action_queue if a != Action.HARD_DROP]
                 
                 if not non_drop_actions and Action.HARD_DROP in self.action_queue:
-                    # 只剩 hard_drop 了，进入阶段2：持续down直到新方块
-                    self.action_queue = []  # 清空队列，进入down模式
+                    # 只剩 hard_drop 了，执行硬降并进入等待模式
+                    self.action_queue = []
+                    self.waiting_for_new_piece = True
+                    self.log(f"执行硬降，开始等待新方块")
                 else:
                     # 执行一个动作（旋转或水平移动）
                     action = self.action_queue.pop(0)
@@ -167,24 +173,22 @@ class TetrisAIController:
                     time.sleep(0.01)
                     continue
             
-            # 阶段2: 当在目标正上方时，持续down直到新方块出现
-            if self.target_x is not None and piece_x == self.target_x:
-                # 在目标正上方，持续down
+            # 阶段2: 如果正在等待新方块，且当前方块还在，持续down加速下落
+            if self.waiting_for_new_piece:
+                # 还在等待新方块，执行down加速
                 self._execute_action(Action.MOVE_DOWN)
                 self.stats.total_actions += 1
-                time.sleep(0.1)  # 0.1秒间隔
+                time.sleep(0.05)  # 0.05秒间隔，比自然下落快
             else:
                 # 不在目标位置，等待
                 time.sleep(0.01)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
-        # 只有真正的新方块才增加计数
-        if piece_type != self.last_piece_type:
-            self.current_piece_id += 1
-            self.stats.piece_count += 1
-        
+        self.current_piece_id += 1
+        self.stats.piece_count += 1
         self.last_piece_type = piece_type
+        self.last_piece_y = state.get('currentPiece', {}).get('y', 0)
         self.action_queue = []
         self.target_x = None  # 重置目标X
         
