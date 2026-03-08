@@ -31,7 +31,8 @@ class TetrisAIController:
     
     def __init__(self, api_base_url: str = "http://127.0.0.1:8080/api"):
         self.api = TetrisAPI(api_base_url)
-        self.ai = AStarTetris(max_search_time=0.3)  # 减少搜索时间，提高响应速度
+        self.ai = AStarTetris(max_search_time=0.5)  # 搜索时间
+        self.ai.debug = True  # 启用调试输出
         self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
         self.action_queue: list[Action] = []

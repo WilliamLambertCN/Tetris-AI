@@ -127,8 +127,7 @@ class TetrisState:
     
     def get_state_key(self) -> str:
         """状态唯一键"""
-        board_hash = ''.join(str(cell) for row in self.board for cell in row)
-        return f"{self.piece_x},{self.piece_y},{self.rotation},{hash(board_hash) % 10000}"
+        return f"{self.piece_x},{self.piece_y},{self.rotation}"
 
 
 def get_column_heights(board: List[List[int]]) -> List[int]:
@@ -158,44 +157,51 @@ def count_holes(board: List[List[int]]) -> int:
 
 
 def get_bumpiness(heights: List[int]) -> int:
-    """计算列高度差（不平整度）"""
+    """计算列高度差"""
     bumpiness = 0
     for i in range(len(heights) - 1):
         bumpiness += abs(heights[i] - heights[i + 1])
     return bumpiness
 
 
-def get_aggregate_height(heights: List[int]) -> int:
-    """总高度"""
-    return sum(heights)
-
-
-def count_complete_lines(board: List[List[int]]) -> int:
-    """统计可消除的行数"""
-    return sum(1 for row in board if all(row))
+def evaluate_board(board: List[List[int]], lines_cleared: int = 0) -> float:
+    """评估棋盘状态（越高越好）"""
+    heights = get_column_heights(board)
+    aggregate_height = sum(heights)
+    bumpiness = get_bumpiness(heights)
+    holes = count_holes(board)
+    complete_lines = sum(1 for row in board if all(row))
+    max_height = max(heights) if heights else 0
+    
+    # 权重
+    score = (
+        -0.51 * aggregate_height +
+        -0.18 * bumpiness +
+        -0.36 * holes +
+        0.76 * complete_lines +
+        -0.10 * max_height
+    )
+    
+    return score
 
 
 def simulate_place_piece(board: List[List[int]], piece_type: str, x: int, y: int, rotation: int) -> Optional[List[List[int]]]:
-    """模拟放置方块，返回新棋盘或 None（如果无效）"""
+    """模拟放置方块"""
     new_board = copy.deepcopy(board)
     shape = SHAPES[piece_type]['rotations'][rotation]
     
-    # 检查碰撞
     for row in range(len(shape)):
         for col in range(len(shape[row])):
             if shape[row][col]:
                 board_x = x + col
                 board_y = y + row
                 
-                # 边界检查
                 if board_x < 0 or board_x >= BOARD_WIDTH or board_y >= BOARD_HEIGHT:
                     return None
                 
-                # 碰撞检查
                 if board_y >= 0 and new_board[board_y][board_x]:
                     return None
     
-    # 放置方块
     for row in range(len(shape)):
         for col in range(len(shape[row])):
             if shape[row][col]:
@@ -207,50 +213,16 @@ def simulate_place_piece(board: List[List[int]], piece_type: str, x: int, y: int
     return new_board
 
 
-def find_drop_position(board: List[List[int]], piece_type: str, x: int, start_y: int, rotation: int) -> int:
-    """找到方块的最终下落位置"""
-    y = start_y
-    while True:
-        test_board = simulate_place_piece(board, piece_type, x, y + 1, rotation)
-        if test_board is None:
-            return y
-        y += 1
-
-
-def evaluate_board(board: List[List[int]], lines_cleared: int = 0) -> float:
-    """
-    评估棋盘状态
-    返回分数（越高越好）
-    """
-    heights = get_column_heights(board)
-    aggregate_height = get_aggregate_height(heights)
-    bumpiness = get_bumpiness(heights)
-    holes = count_holes(board)
-    complete_lines = count_complete_lines(board)
-    max_height = max(heights) if heights else 0
-    
-    # 权重（这些权重需要调优）
-    # 负数表示惩罚
-    score = (
-        -0.51 * aggregate_height +  # 总高度惩罚
-        -0.18 * bumpiness +         # 不平整惩罚
-        -0.36 * holes +             # 空洞惩罚（重要）
-        0.76 * complete_lines +     # 消行奖励
-        -0.10 * max_height          # 最高列惩罚
-    )
-    
-    return score
-
-
 class AStarTetris:
     """A* 算法实现"""
     
-    def __init__(self, max_search_time: float = 1.0):
+    def __init__(self, max_search_time: float = 0.5):
         self.max_search_time = max_search_time
         self.node_count = 0
         self.last_search_nodes = 0
         self.last_search_time = 0
         self.last_evaluation = 0
+        self.debug = False
     
     def check_collision(self, state: TetrisState) -> bool:
         """检查碰撞"""
@@ -271,22 +243,34 @@ class AStarTetris:
         return False
     
     def is_goal_state(self, state: TetrisState) -> bool:
-        """检查是否已落地"""
+        """检查是否已落地（不能再下移）"""
         test_state = state.copy()
         test_state.piece_y += 1
         return self.check_collision(test_state)
     
     def get_possible_actions(self, state: TetrisState) -> List[Action]:
         """获取可能的动作"""
-        actions = [Action.MOVE_LEFT, Action.MOVE_RIGHT]
+        actions = []
         
-        # 检查是否可以旋转
+        # 左移
+        test_left = state.copy()
+        test_left.piece_x -= 1
+        if not self.check_collision(test_left):
+            actions.append(Action.MOVE_LEFT)
+        
+        # 右移
+        test_right = state.copy()
+        test_right.piece_x += 1
+        if not self.check_collision(test_right):
+            actions.append(Action.MOVE_RIGHT)
+        
+        # 旋转
         test_rotate = state.copy()
         test_rotate.rotation = (test_rotate.rotation + 1) % 4
         if not self.check_collision(test_rotate):
             actions.append(Action.ROTATE)
         
-        # 检查是否可以下移
+        # 下移
         test_down = state.copy()
         test_down.piece_y += 1
         if not self.check_collision(test_down):
@@ -324,11 +308,15 @@ class AStarTetris:
         return list(reversed(actions))
     
     def find_best_placement(self, initial_state: TetrisState) -> List[Action]:
-        """
-        A* 搜索最佳放置位置
-        """
+        """A* 搜索最佳放置位置"""
         start_time = time.time()
         self.node_count = 0
+        
+        # 检查初始状态
+        if self.check_collision(initial_state):
+            if self.debug:
+                print(f"[A*] 初始状态碰撞，方块: {initial_state.piece_type} at ({initial_state.piece_x}, {initial_state.piece_y})")
+            return []
         
         open_list = PriorityQueue()
         closed_set: Set[str] = set()
@@ -340,19 +328,26 @@ class AStarTetris:
         initial_state.g_cost = 0
         initial_state.h_cost = 0
         initial_state.f_cost = 0
+        initial_state.parent = None
+        initial_state.action = None
         
         counter = 0
         open_list.put((initial_state.f_cost, counter, initial_state))
         counter += 1
         
+        if self.debug:
+            print(f"[A*] 开始搜索，方块: {initial_state.piece_type}, 位置: ({initial_state.piece_x}, {initial_state.piece_y})")
+        
         while not open_list.empty():
             if time.time() - start_time > self.max_search_time:
+                if self.debug:
+                    print(f"[A*] 搜索超时")
                 break
             
             _, _, current = open_list.get()
             self.node_count += 1
             
-            # 检查是否目标状态
+            # 检查是否目标状态（已落地）
             if self.is_goal_state(current):
                 # 评估这个位置
                 final_board = simulate_place_piece(
@@ -367,8 +362,11 @@ class AStarTetris:
                     if score > best_goal_score:
                         best_goal_score = score
                         best_goal_state = current
+                        if self.debug:
+                            print(f"[A*] 找到落点: ({current.piece_x}, {current.piece_y}), 分数: {score:.2f}")
                 continue
             
+            # 添加到已探索
             closed_set.add(current.get_state_key())
             
             # 生成子状态
@@ -382,7 +380,7 @@ class AStarTetris:
                     continue
                 
                 child.g_cost = current.g_cost + ACTION_COST[action]
-                child.h_cost = 0  # 简化：不使用启发函数
+                child.h_cost = 0
                 child.f_cost = child.g_cost + child.h_cost
                 child.parent = current
                 child.action = action
@@ -408,7 +406,13 @@ class AStarTetris:
             if final_board:
                 self.last_evaluation = evaluate_board(final_board)
             
+            if self.debug:
+                print(f"[A*] 搜索完成，路径长度: {len(path)}, 节点数: {self.node_count}, 耗时: {self.last_search_time*1000:.1f}ms")
+            
             return path
+        
+        if self.debug:
+            print(f"[A*] 未找到落点，节点数: {self.node_count}")
         
         return []
 
@@ -430,6 +434,7 @@ if __name__ == '__main__':
     state = create_initial_state(board, 'T', 4, 0)
     
     ai = AStarTetris(max_search_time=0.5)
+    ai.debug = True
     actions = ai.find_best_placement(state)
     
     print(f"Best actions: {[a.value for a in actions]}")
