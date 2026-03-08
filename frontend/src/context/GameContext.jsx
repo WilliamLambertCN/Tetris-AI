@@ -446,6 +446,7 @@ export function GameProvider({ children }) {
     // AI 动作轮询
     // ========================================
 
+    // 获取 AI 动作
     useEffect(() => {
         if (!aiMode || gameOver) return;
         const interval = setInterval(async () => {
@@ -453,15 +454,20 @@ export function GameProvider({ children }) {
                 const response = await aiApi.getActions();
                 const actions = response.data.actions || [];
                 if (actions.length > 0) {
-                    console.log('[AI] Got actions:', actions);
+                    console.log('[AI] Raw actions from API:', JSON.stringify(actions));
+                    actions.forEach((item) => {
+                        // 处理不同的数据格式
+                        const action = typeof item === 'string' ? item : (item.action || item);
+                        if (action) {
+                            aiActionQueueRef.current.push(action);
+                            console.log('[AI] Queued action:', action);
+                        }
+                    });
                 }
-                actions.forEach(({ action }) => {
-                    aiActionQueueRef.current.push(action);
-                });
             } catch (err) {
                 console.error('Failed to get AI actions:', err);
             }
-        }, 50);
+        }, 30);
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
 

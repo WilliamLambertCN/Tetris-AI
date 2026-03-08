@@ -152,7 +152,10 @@ class TetrisAIController:
                 self._execute_action(action)
                 self.stats.total_actions += 1
             
-            time.sleep(0.03)  # 30ms 执行间隔
+            # AI 模式下快速执行，减少等待
+            if not self.action_queue:
+                time.sleep(0.01)  # 10ms 轮询间隔
+            # 否则立即继续执行下一个动作
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
@@ -161,19 +164,26 @@ class TetrisAIController:
         self.stats.piece_count += 1
         self.action_queue = []
         
-        self.log(f"新方块 #{self.current_piece_id}: {piece_type}")
-        
         # 构建初始状态
         board = state.get('board', [])
         piece_x = state.get('currentPiece', {}).get('x', 0)
         piece_y = state.get('currentPiece', {}).get('y', 0)
         
-        # 调试输出
         if not board or len(board) != 20:
             self.log(f"棋盘数据异常: {len(board) if board else 'None'} 行", "ERROR")
             return
         
-        self.log(f"初始位置: X={piece_x}, Y={piece_y}, 棋盘非零格数: {sum(sum(row) for row in board)}", "DEBUG")
+        # 打印初始棋盘状态
+        print(f"\n{'='*60}")
+        print(f"🎲 新方块 #{self.current_piece_id}: {piece_type}")
+        print(f"📍 初始位置: X={piece_x}, Y={piece_y}")
+        print(f"📊 当前棋盘非零格数: {sum(sum(row) for row in board)}")
+        
+        # 打印棋盘顶部几行
+        print("🎮 当前棋盘顶部:")
+        for i in range(min(5, len(board))):
+            row_str = ''.join(['█' if cell else '·' for cell in board[i]])
+            print(f"  Row {i:2d}: {row_str}")
         
         ai_state = create_initial_state(board, piece_type, piece_x, piece_y)
         
@@ -188,15 +198,33 @@ class TetrisAIController:
             # 计算目标位置
             target_pos = self._calculate_target(ai_state, actions)
             
-            # 打印决策日志
-            self.log_decision(
-                piece_type=piece_type,
-                actions=actions,
-                target_pos=target_pos,
-                evaluation=self.ai.last_evaluation,
-                search_time=search_time,
-                nodes=0
+            # 模拟放置后的棋盘
+            from tetris_ai import simulate_place, clear_lines
+            placed_board = simulate_place(
+                ai_state.board,
+                piece_type,
+                target_pos['x'],
+                target_pos['y'],
+                target_pos['rotation']
             )
+            
+            if placed_board:
+                final_board = clear_lines(placed_board)
+                lines_cleared = sum(1 for row in placed_board if all(row))
+                
+                # 打印目标状态
+                print(f"\n🎯 目标位置: X={target_pos['x']}, Y={target_pos['y']}, 旋转={target_pos['rotation']}")
+                print(f"📋 动作序列: {' -> '.join([a.value for a in actions])}")
+                print(f"📊 评估分数: {self.ai.last_evaluation:+.2f}")
+                print(f"🔥 将消除行数: {lines_cleared}")
+                
+                # 打印放置后的棋盘顶部
+                print("🎮 放置后方块后的棋盘顶部:")
+                for i in range(min(5, len(final_board))):
+                    row_str = ''.join(['█' if cell else '·' for cell in final_board[i]])
+                    print(f"  Row {i:2d}: {row_str}")
+                
+                print(f"{'='*60}\n")
             
             # 上报思考状态
             self.api.report_thinking(
@@ -211,8 +239,7 @@ class TetrisAIController:
                 evaluation_score=self.ai.last_evaluation
             )
         else:
-            self.log(f"⚠️  A* 搜索失败，使用备用策略", "WARN")
-            # 备用策略：直接硬降
+            self.log(f"⚠️  AI 搜索失败，使用备用策略", "WARN")
             self.action_queue = [Action.HARD_DROP]
             
             self.api.report_thinking(
