@@ -135,20 +135,7 @@ while True:
     sleep(0.1)
 ```
 
-### 9. 同类型新方块检测失败
-**错误**：只检测 `piece_type != self.last_piece_type`，当连续两个相同类型的方块（如 I 后又是 I）时，第二个方块不会被识别为新方块。
-**后果**：
-- 同类型的新方块没有计算 target 和 action
-- AI 不处理新方块，导致堆积异常
-**纠正**：添加额外检测条件：
-```python
-is_new_piece = (
-    piece_type != self.last_piece_type or  # 类型变化
-    (not self.action_queue and piece_y <= 1 and self.last_piece_y > 10)  # 同类型新方块
-)
-```
-
-### 10. 反复修改引入新 bug
+### 9. 反复修改引入新 bug
 **错误**：每次修改都试图修复一个问题，但引入新问题。
 **表现**：
 - 修复鬼畜 → 引入消除 bug
