@@ -16,6 +16,7 @@
 - ✅ 暂停/继续功能
 - ✅ 游戏结束判定
 - ✅ 下一个方块预览
+- ✅ **🤖 A* AI 自动控制**（基于 Pierre Dellacherie 启发函数）
 - 🚧 排行榜 API（后端已就绪）
 
 ## 🏗️ 技术栈
@@ -220,6 +221,53 @@ npm cache clean --force
 rm -rf node_modules package-lock.json
 npm install
 ```
+
+## 🤖 AI 自动控制
+
+本项目实现了基于 **A* 算法** 的俄罗斯方块 AI，使用 **Pierre Dellacherie 启发函数** 评估棋盘状态。
+
+### 启动 AI
+
+```bash
+# 1. 安装 Python 依赖
+cd algorithm
+pip install -r requirements.txt
+
+# 2. 确保后端已启动
+cd ../backend && npm start
+
+# 3. 确保前端已启动
+cd ../frontend && npm run dev
+
+# 4. 运行 AI
+cd algorithm
+python run_ai.py
+```
+
+AI 将自动：
+1. 连接到游戏后端
+2. 切换到 AI 模式
+3. 控制游戏进行
+4. 游戏结束后自动重开
+
+### AI 算法参数
+
+| 指标 | 权重 | 说明 |
+|------|------|------|
+| Landing Height | 1.0 | 落点高度（越低越好） |
+| Eroded Cells | 1.0 | 消行贡献（奖励） |
+| Row Transitions | 0.5 | 行变换次数 |
+| Col Transitions | 0.5 | 列变换次数 |
+| Holes | 2.0 | 空洞数（惩罚最高） |
+| Well Sums | 0.5 | 井深度 |
+
+### 预期效果
+
+- **搜索时间**: < 100ms/步
+- **消行能力**: 稳定运行 1000+ 行
+- **最高分**: 预计 10,000+ 分
+
+更多详情见 [algorithm/README.md](algorithm/README.md)
 
 ## 📜 许可
 
