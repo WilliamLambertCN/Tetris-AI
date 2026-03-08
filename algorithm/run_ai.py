@@ -39,6 +39,8 @@ class TetrisAIController:
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
         self.dropping = False  # 是否处于快速下降模式
+        self.last_cell_count: int = 0  # 上次棋盘非零格数
+        self.total_cells_placed: int = 0  # 总共放置的格子数
         
         # 配置日志级别
         self.verbose = True
@@ -136,6 +138,32 @@ class TetrisAIController:
             piece_type = current_piece.get('type')
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
+            
+            # 计算当前棋盘非零格数
+            board = state.get('board', [])
+            current_cell_count = sum(sum(row) for row in board)
+            
+            # 检查方块数变化是否异常
+            if self.last_cell_count > 0:
+                cell_diff = current_cell_count - self.last_cell_count
+                
+                # 正常情况下：
+                # 1. 放置新方块：+4（俄罗斯方块都是4格）
+                # 2. 消除整行：-10（每行10格）
+                
+                # 如果减少的不是10的倍数，说明有异常消除
+                if cell_diff < 0 and cell_diff % 10 != 0:
+                    self.log(f"ERROR: 异常消除！方块数变化: {cell_diff} (上次: {self.last_cell_count}, 本次: {current_cell_count})", "ERROR")
+                    self.log(f"ERROR: 减少的格子数不是10的倍数，疑似bug！", "ERROR")
+                elif cell_diff > 0 and cell_diff != 4:
+                    self.log(f"WARN: 方块增加数异常: +{cell_diff} (期望+4)", "WARN")
+                else:
+                    # 正常情况打印INFO
+                    if cell_diff != 0:
+                        self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d})")
+            
+            # 更新记录
+            self.last_cell_count = current_cell_count
             
             # 检测新方块：类型变化
             if piece_type != self.last_piece_type:
@@ -252,11 +280,27 @@ class TetrisAIController:
             self.log(f"棋盘数据异常: {len(board) if board else 'None'} 行", "ERROR")
             return
         
+        # 更新当前棋盘格子数
+        current_cell_count = sum(sum(row) for row in board)
+        
+        # 检查是否有异常（新方块出现时，格子数应该增加4）
+        if self.last_cell_count > 0:
+            expected_increase = 4  # 俄罗斯方块每个都是4格
+            actual_change = current_cell_count - self.last_cell_count
+            
+            # 如果没有增加4，可能是消除或异常
+            if actual_change != expected_increase and actual_change != expected_increase - 10:
+                # 允许 +4 (无消除) 或 -6 (消除1行: +4-10)
+                if actual_change < 0 and actual_change % 10 != (expected_increase % 10):
+                    self.log(f"ERROR: 新方块出现时格子数异常！变化: {actual_change} (期望 +4 或 -6)", "ERROR")
+        
+        self.last_cell_count = current_cell_count
+        
         # 打印初始棋盘状态
         print(f"\n{'='*60}")
         print(f"🎲 新方块 #{self.current_piece_id}: {piece_type}")
         print(f"📍 初始位置: X={piece_x}, Y={piece_y}")
-        print(f"📊 当前棋盘非零格数: {sum(sum(row) for row in board)}")
+        print(f"📊 当前棋盘非零格数: {current_cell_count}")
         
         # 打印完整棋盘（或底部10行）
         print("🎮 当前棋盘状态（底部10行）:")
