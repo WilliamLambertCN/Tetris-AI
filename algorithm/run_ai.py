@@ -111,7 +111,7 @@ class TetrisAIController:
             self._stop()
     
     def _main_loop(self):
-        """主游戏循环 - 当方块在target正上方时，while循环down直到新方块"""
+        """主游戏循环 - 动态调整，确保到达target位置"""
         
         while True:
             # 获取游戏状态
@@ -144,8 +144,20 @@ class TetrisAIController:
             # 更新上次Y位置
             self.last_piece_y = piece_y
             
-            # 阶段1：执行动作队列（旋转、水平移动）
+            # 阶段1：执行动作，并根据实时位置动态调整
             if self.action_queue:
+                # 获取队列中的下一个动作
+                next_action = self.action_queue[0]
+                
+                # 如果是水平移动，检查是否偏离目标
+                if next_action in (Action.MOVE_LEFT, Action.MOVE_RIGHT):
+                    # 重新计算还需要多少步
+                    remaining_actions = self._recalculate_actions(state)
+                    if remaining_actions:
+                        self.action_queue = remaining_actions
+                        next_action = self.action_queue[0]
+                
+                # 执行动作
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
@@ -153,7 +165,7 @@ class TetrisAIController:
                 # hard_drop后，进入阶段2
                 if action == Action.HARD_DROP:
                     self.dropping = True
-                    self.log(f"到达目标位置，开始while循环下降")
+                    self.log(f"到达目标位置 X={piece_x}，开始while循环下降")
                 
                 time.sleep(0.01)
                 continue
@@ -192,6 +204,35 @@ class TetrisAIController:
             else:
                 # 不在下降模式，等待
                 time.sleep(0.01)
+    
+    def _recalculate_actions(self, state: dict) -> list:
+        """根据当前位置重新计算动作"""
+        current_piece = state.get('currentPiece')
+        if not current_piece:
+            return []
+        
+        current_x = current_piece.get('x', 0)
+        piece_type = current_piece.get('type')
+        
+        # 如果还没有目标位置，返回空
+        if self.target_x is None:
+            return []
+        
+        # 重新计算从当前位置到目标位置的动作
+        actions = []
+        
+        # 水平移动到目标位置
+        while current_x < self.target_x:
+            actions.append(Action.MOVE_RIGHT)
+            current_x += 1
+        while current_x > self.target_x:
+            actions.append(Action.MOVE_LEFT)
+            current_x -= 1
+        
+        # 添加 hard_drop
+        actions.append(Action.HARD_DROP)
+        
+        return actions
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
