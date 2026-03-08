@@ -8,7 +8,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from api_client import TetrisAPI
-from tetris_ai import TetrisAI, TetrisState, Action, create_initial_state
+from tetris_ai import TetrisAI, TetrisState, Action, create_initial_state, check_collision
 
 
 @dataclass
@@ -235,13 +235,12 @@ class TetrisAIController:
             elif action == Action.MOVE_DOWN:
                 state.piece_y += 1
             elif action == Action.HARD_DROP:
-                # 硬降：一直下落
+                # 硬降：一直下落直到碰撞
                 while True:
-                    test_state = state.copy()
-                    test_state.piece_y += 1
-                    if self.ai.check_collision(test_state):
+                    test_y = state.piece_y + 1
+                    if check_collision(state.board, state.piece_type, state.piece_x, test_y, state.rotation):
                         break
-                    state.piece_y += 1
+                    state.piece_y = test_y
         
         return {
             "x": state.piece_x,
