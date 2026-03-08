@@ -168,7 +168,7 @@ class TetrisAIController:
             # 检测新方块：类型变化，或(方块在顶部且没有操作flag)
             is_new_piece = (
                 piece_type != self.last_piece_type or  # 类型变化
-                (piece_y <= 1 and not self.dropping)  # 同类型新方块：Y在顶部且不在操作状态
+                (piece_y <= 1 and not self.action_queue)  # 同类型新方块：Y在顶部且操作队列为空
             )
             
             if is_new_piece:
