@@ -164,12 +164,15 @@ class TetrisAIController:
                 continue
             
             # 阶段2：如果在target正上方且正在下降模式，while循环down
-            # 注意：hard_drop后方块已经落地，新方块生成，此时piece_x应该等于target_x
+            # 注意：hard_drop后方块已经落地并生成新方块，此时不应该再发送down
             if self.dropping and piece_x == self.target_x:
-                # 已经执行了hard_drop且方块在目标位置，快速下降直到新方块
-                drop_count = 0
-                while drop_count < 30:  # 最多30次下降
-                    # 获取最新状态
+                # hard_drop已经执行，方块应该已经落地，新方块已生成
+                # 此时只需等待新方块检测，不再发送down
+                self.log(f"hard_drop完成，等待新方块...")
+                
+                # 轮询等待新方块出现
+                wait_count = 0
+                while wait_count < 50:  # 最多等待5秒
                     state = self.api.get_state()
                     if not state or state.get('gameOver'):
                         break
@@ -179,28 +182,14 @@ class TetrisAIController:
                         break
                     
                     piece_type_new = current_piece.get('type')
-                    piece_y_new = current_piece.get('y', 0)
                     
-                    # 检测新方块：类型变化，或Y位置回到顶部
+                    # 检测新方块：类型变化
                     if piece_type_new != self.last_piece_type:
-                        self.log(f"检测到新方块 {piece_type_new}，退出快速下降")
+                        self.log(f"检测到新方块 {piece_type_new}")
                         break
                     
-                    # 如果Y位置长时间不变，说明已经到底了，等待新方块
-                    if drop_count > 0 and piece_y_new == self.last_piece_y and piece_y_new > 15:
-                        # 可能已经到底，稍微等待再检测
-                        time.sleep(0.1)
-                        drop_count += 1
-                        continue
-                    
-                    # 发送down加速下落
-                    self._execute_action(Action.MOVE_DOWN)
-                    self.stats.total_actions += 1
-                    self.last_piece_y = piece_y_new
-                    drop_count += 1
-                    
-                    # 间隔0.1s
                     time.sleep(0.1)
+                    wait_count += 1
                 
                 self.dropping = False
             else:
