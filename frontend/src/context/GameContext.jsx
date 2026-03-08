@@ -310,7 +310,7 @@ export function GameProvider({ children }) {
         
         const interval = setInterval(async () => {
             try {
-                // 转换棋盘格式
+                // 转换棋盘格式：0/1 格式，AI 需要
                 const binaryBoard = board.map(row =>
                     row.map(cell => cell ? 1 : 0)
                 );
@@ -338,6 +338,11 @@ export function GameProvider({ children }) {
         
         return () => clearInterval(interval);
     }, [aiMode, board, currentPiece, nextPiece, score, level, gameOver]);
+    
+    // 辅助函数：计算棋盘非零格数（用于调试）
+    const countBoardCells = useCallback((boardData) => {
+        return boardData.reduce((sum, row) => sum + row.filter(cell => cell !== null && cell !== 0).length, 0);
+    }, []);
 
     // ========================================
     // 方块移动函数
