@@ -111,10 +111,7 @@ class TetrisAIController:
             self._stop()
     
     def _main_loop(self):
-        """主游戏循环 - 简化为纯执行，不重复调整"""
-        debug_counter = 0
-        last_piece_y = 0
-        stuck_counter = 0
+        """主游戏循环 - 当方块在目标正上方时持续down直到新方块"""
         
         while True:
             # 获取游戏状态
@@ -137,20 +134,10 @@ class TetrisAIController:
             
             # 检测新方块
             piece_type = current_piece.get('type')
+            piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 检测是否卡住了（Y坐标长时间不变且动作队列还有内容）
-            if piece_y == last_piece_y and self.action_queue:
-                stuck_counter += 1
-                if stuck_counter > 50:  # 约250ms没动，说明卡住了
-                    self.log(f"检测到卡住，清空队列重新规划", "WARN")
-                    self.action_queue = []
-                    stuck_counter = 0
-            else:
-                stuck_counter = 0
-            last_piece_y = piece_y
-            
-            # 新方块检测：类型变化，或者当前方块未处理且动作队列为空且方块在顶部
+            # 新方块检测
             is_new_piece = (
                 piece_type != self.last_piece_type or  # 类型变化
                 (not self.processing_piece and not self.action_queue and piece_y <= 2)  # 新方块且未处理
@@ -160,21 +147,35 @@ class TetrisAIController:
                 self._handle_new_piece(state, piece_type)
                 self.processing_piece = True
             
-            # 如果方块已经不在顶部区域，重置处理标记（表示已放置）
+            # 如果方块已经不在顶部区域，重置处理标记
             if piece_y > 3:
                 self.processing_piece = False
             
-            # 执行动作（每次只执行一个）
+            # 阶段1: 执行动作队列（旋转和水平移动）
             if self.action_queue:
-                action = self.action_queue.pop(0)
-                # 调试：打印动作队列状态
-                if action == Action.MOVE_DOWN:
-                    print(f"[DEBUG] Executing DOWN, queue remaining: {[a.value for a in self.action_queue]}")
-                self._execute_action(action)
-                self.stats.total_actions += 1
+                # 检查是否只剩 hard_drop 或已经在目标位置正上方
+                non_drop_actions = [a for a in self.action_queue if a != Action.HARD_DROP]
+                
+                if not non_drop_actions and Action.HARD_DROP in self.action_queue:
+                    # 只剩 hard_drop 了，进入阶段2：持续down直到新方块
+                    self.action_queue = []  # 清空队列，进入down模式
+                else:
+                    # 执行一个动作（旋转或水平移动）
+                    action = self.action_queue.pop(0)
+                    self._execute_action(action)
+                    self.stats.total_actions += 1
+                    time.sleep(0.01)
+                    continue
             
-            # 短暂休眠
-            time.sleep(0.008)
+            # 阶段2: 当在目标正上方时，持续down直到新方块出现
+            if self.target_x is not None and piece_x == self.target_x:
+                # 在目标正上方，持续down
+                self._execute_action(Action.MOVE_DOWN)
+                self.stats.total_actions += 1
+                time.sleep(0.1)  # 0.1秒间隔
+            else:
+                # 不在目标位置，等待
+                time.sleep(0.01)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
@@ -185,6 +186,7 @@ class TetrisAIController:
         
         self.last_piece_type = piece_type
         self.action_queue = []
+        self.target_x = None  # 重置目标X
         
         # 构建初始状态
         board = state.get('board', [])
@@ -216,10 +218,12 @@ class TetrisAIController:
         
         if actions:
             self.action_queue = actions
-            print(f"[DEBUG] New actions generated: {[a.value for a in actions]}")
             
             # 计算目标位置
             target_pos = self._calculate_target(ai_state, actions)
+            self.target_x = target_pos['x']  # 设置目标X位置
+            
+            print(f"[DEBUG] New actions: {[a.value for a in actions]}, target_x={self.target_x}")
             
             # 模拟放置后的棋盘
             from tetris_ai import simulate_place, clear_lines
@@ -299,27 +303,8 @@ class TetrisAIController:
         }
     
     def _adjust_actions(self, state: dict):
-        """极简调整：只在偏差大时重新规划，且不再插入多余的 down"""
-        if not self.action_queue or len(self.action_queue) < 2:
-            return
-        
-        current_piece = state.get('currentPiece')
-        if not current_piece:
-            return
-        
-        # 获取当前位置
-        current_x = current_piece.get('x', 0)
-        current_y = current_piece.get('y', 0)
-        
-        # 如果已经在下落过程中（y > 5），就不要再调整了
-        if current_y > 5:
-            return
-        
-        # 简单检查：如果队列里全是 down，且当前方块还在顶部，说明出问题了，清空重新规划
-        down_count = sum(1 for a in self.action_queue if a == Action.MOVE_DOWN)
-        if down_count > len(self.action_queue) * 0.8 and current_y <= 2:
-            self.log(f"检测到异常：全是down指令，清空重新规划", "WARN")
-            self.action_queue = []
+        """不再使用复杂调整逻辑，由主循环处理"""
+        pass
     
     def _execute_action(self, action: Action):
         """执行动作"""
