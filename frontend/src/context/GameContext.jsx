@@ -560,32 +560,6 @@ export function GameProvider({ children }) {
         }
     }, [aiMode, board, currentPiece, nextPiece, score, level, gameOver]);
 
-    /**
-     * 执行 AI 动作
-     */
-    const executeAiAction = useCallback((action) => {
-        if (!aiMode || paused || gameOver) return;
-        
-        switch (action) {
-            case 'left':
-                moveLeft();
-                break;
-            case 'right':
-                moveRight();
-                break;
-            case 'rotate':
-                rotate();
-                break;
-            case 'down':
-                moveDown();
-                break;
-            case 'hard_drop':
-                // 硬降：一直下落到碰撞
-                while (!moveDown()) {}
-                break;
-        }
-    }, [aiMode, paused, gameOver, moveLeft, moveRight, rotate, moveDown]);
-
     // ========================================
     // 方块移动函数
     // ========================================
@@ -667,6 +641,32 @@ export function GameProvider({ children }) {
         const rotatedPiece = rotatePiece(piece, board);
         setCurrentPiece(rotatedPiece);
     }, [board]);
+
+    /**
+     * 执行 AI 动作
+     */
+    const executeAiAction = useCallback((action) => {
+        if (!aiMode || paused || gameOver) return;
+        
+        switch (action) {
+            case 'left':
+                moveLeft();
+                break;
+            case 'right':
+                moveRight();
+                break;
+            case 'rotate':
+                rotate();
+                break;
+            case 'down':
+                moveDown();
+                break;
+            case 'hard_drop':
+                // 硬降：一直下落到碰撞
+                while (!moveDown()) {}
+                break;
+        }
+    }, [aiMode, paused, gameOver, moveLeft, moveRight, rotate, moveDown]);
 
     // ========================================
     // 游戏主循环
