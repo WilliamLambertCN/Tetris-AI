@@ -1,7 +1,7 @@
-import { createContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as CONSTANTS from '../utils/constants';
 
-// 游戏常量导入
+// 游戏常量
 const SHAPES = {
     I: {
         shape: [
@@ -83,7 +83,7 @@ const collide = (pieceShape, pieceX, pieceY, board) => {
 };
 
 // 旋转方块
-const rotate = (piece, board) => {
+const rotatePiece = (piece, board) => {
     const shape = piece.shape;
     const rows = shape.length;
     const cols = shape[0].length;
@@ -97,25 +97,20 @@ const rotate = (piece, board) => {
     }
 
     const oldShape = piece.shape;
-    piece.shape = newShape.map(row => [...row]);
+    const newPiece = { ...piece, shape: newShape.map(row => [...row]) };
 
-    if (collide(piece.shape, piece.x, piece.y, board)) {
-        piece.shape = oldShape.map(row => [...row]);
-        attemptWallKick(piece, board);
-    }
-};
-
-// 墙踢尝试
-const attemptWallKick = (piece, board) => {
-    const directions = [-1, 1, -2, 2];
-
-    for (const direction of directions) {
-        piece.x += direction;
-        if (!collide(piece.shape, piece.x, piece.y, board)) {
-            return;
+    if (collide(newPiece.shape, newPiece.x, newPiece.y, board)) {
+        // 墙踢尝试
+        const directions = [-1, 1, -2, 2];
+        for (const direction of directions) {
+            const kickedPiece = { ...newPiece, x: newPiece.x + direction };
+            if (!collide(kickedPiece.shape, kickedPiece.x, kickedPiece.y, board)) {
+                return kickedPiece;
+            }
         }
-        piece.x -= direction;
+        return { ...piece, shape: oldShape.map(row => [...row]) };
     }
+    return newPiece;
 };
 
 // 绘制方块单元
@@ -147,6 +142,18 @@ const drawBoard = (ctx, board, rows, cols, blockSize) => {
     }
 };
 
+// 绘制当前方块
+const drawPiece = (ctx, piece, blockSize) => {
+    if (!piece) return;
+    for (let row = 0; row < piece.shape.length; row++) {
+        for (let col = 0; col < piece.shape[row].length; col++) {
+            if (piece.shape[row][col]) {
+                drawBlock(ctx, piece.x + col, piece.y + row, piece.color, blockSize);
+            }
+        }
+    }
+};
+
 // 绘制下一个方块预览
 const drawNextPiece = (ctx, nextPiece, blockSize = 20) => {
     ctx.fillStyle = '#0d0d1a';
@@ -167,6 +174,9 @@ const drawNextPiece = (ctx, nextPiece, blockSize = 20) => {
     }
 };
 
+// 获取所有方块类型
+const getAllPieceTypes = () => Object.keys(SHAPES);
+
 // 创建新方块
 const createPiece = (type) => {
     return {
@@ -179,76 +189,53 @@ const createPiece = (type) => {
 };
 
 // 生成新方块
-const spawnPiece = (nextPiece, createPiece) => {
-    if (!nextPiece) {
-        const types = Object.keys(SHAPES);
-        nextPiece = createPiece(types[Math.floor(Math.random() * types.length)]);
-    }
-
-    const currentPiece = nextPiece;
-    nextPiece = createPiece(types[Math.floor(Math.random() * types.length)]);
-
-    return { currentPiece, nextPiece };
+const spawnPiece = (nextPiece) => {
+    const types = getAllPieceTypes();
+    const currentPiece = nextPiece || createPiece(types[Math.floor(Math.random() * types.length)]);
+    const newNextPiece = createPiece(types[Math.floor(Math.random() * types.length)]);
+    return { currentPiece, nextPiece: newNextPiece };
 };
 
 // 方块落定
 const lockPiece = (board, currentPiece) => {
+    const newBoard = board.map(row => [...row]);
     for (let row = 0; row < currentPiece.shape.length; row++) {
         for (let col = 0; col < currentPiece.shape[row].length; col++) {
             if (currentPiece.shape[row][col]) {
                 const boardY = currentPiece.y + row;
                 if (boardY >= 0) {
-                    board[boardY][currentPiece.x + col] = currentPiece.color;
+                    newBoard[boardY][currentPiece.x + col] = currentPiece.color;
                 }
             }
         }
     }
-
-    checkLines(board);
+    return newBoard;
 };
 
 // 消除行
-const checkLines = (board, score, level, setScore, setLevel) => {
+const checkLines = (board) => {
     let linesCleared = 0;
-
-    for (let row = CONSTANTS.ROWS - 1; row >= 0; row--) {
-        if (board[row].every(cell => cell !== null)) {
-            board.splice(row, 1);
-            board.unshift(Array(CONSTANTS.COLS).fill(null));
-            linesCleared++;
-            row++;
-        }
+    const newBoard = board.filter(row => !row.every(cell => cell !== null));
+    linesCleared = CONSTANTS.ROWS - newBoard.length;
+    
+    while (newBoard.length < CONSTANTS.ROWS) {
+        newBoard.unshift(Array(CONSTANTS.COLS).fill(null));
     }
-
-    if (linesCleared > 0) {
-        const points = [0, 100, 300, 500, 800];
-        const newScore = score + points[linesCleared] * level;
-        setScore(newScore);
-
-        const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
-        setLevel(newLevel);
-
-        const newDropInterval = Math.max(
-            CONSTANTS.MIN_DROP_INTERVAL,
-            CONSTANTS.INITIAL_DROP_INTERVAL - (newLevel - 1) * 100
-        );
-        dropIntervalRef.current = newDropInterval;
-    }
+    
+    return { newBoard, linesCleared };
 };
-
-// 组件引用
-const boardCanvasRef = useRef(null);
-const nextCanvasRef = useRef(null);
-let dropIntervalRef = CONSTANTS.INITIAL_DROP_INTERVAL;
-let animationIdRef = null;
-let lastTimeRef = 0;
-let isGameOverRef = false;
-let isPausedRef = false;
 
 // GameContext
 const GameContext = createContext();
 
 export function GameProvider({ children }) {
+    const boardCanvasRef = useRef(null);
+    const nextCanvasRef = useRef(null);
+    const dropIntervalRef = useRef(CONSTANTS.INITIAL_DROP_INTERVAL);
+    const animationIdRef = useRef(null);
+    const lastTimeRef = useRef(0);
+    const currentPieceRef = useRef(null);
+
     // 初始化游戏板
     const initBoard = useCallback(() => {
         return Array.from({ length: CONSTANTS.ROWS }, () =>
@@ -265,6 +252,35 @@ export function GameProvider({ children }) {
     const [gameOver, setGameOver] = useState(false);
     const [paused, setPaused] = useState(false);
 
+    // 更新当前方块引用
+    useEffect(() => {
+        currentPieceRef.current = currentPiece;
+    }, [currentPiece]);
+
+    // 渲染游戏面板
+    const renderGame = useCallback(() => {
+        if (!boardCanvasRef.current) return;
+        const ctx = boardCanvasRef.current.getContext('2d');
+        drawBoard(ctx, board, CONSTANTS.ROWS, CONSTANTS.COLS, CONSTANTS.BLOCK_SIZE);
+        drawPiece(ctx, currentPieceRef.current, CONSTANTS.BLOCK_SIZE);
+    }, [board]);
+
+    // 渲染下一个方块
+    const renderNextPiece = useCallback(() => {
+        if (!nextCanvasRef.current) return;
+        const ctx = nextCanvasRef.current.getContext('2d');
+        drawNextPiece(ctx, nextPiece, 20);
+    }, [nextPiece]);
+
+    // 渲染
+    useEffect(() => {
+        renderGame();
+    }, [renderGame]);
+
+    useEffect(() => {
+        renderNextPiece();
+    }, [renderNextPiece]);
+
     // 启动游戏
     const startGame = useCallback(() => {
         const newBoard = initBoard();
@@ -275,112 +291,136 @@ export function GameProvider({ children }) {
         setGameOver(false);
         setPaused(false);
 
-        let nextPieceLocal = null;
-        const result = spawnPiece(nextPieceLocal, createPiece);
+        const result = spawnPiece(null);
         setNextPiece(result.nextPiece);
         setCurrentPiece(result.currentPiece);
 
-        if (animationIdRef !== null) {
-            cancelAnimationFrame(animationIdRef);
+        if (animationIdRef.current !== null) {
+            cancelAnimationFrame(animationIdRef.current);
         }
-        lastTimeRef = performance.now();
+        lastTimeRef.current = performance.now();
     }, [initBoard]);
 
     // 暂停游戏
     const togglePause = useCallback(() => {
-        if (gameOver) return;
-
-        setPaused(!paused);
-
-        if (!paused && !gameOver) {
-            lastTimeRef = performance.now();
-            gameLoop(lastTimeRef);
-        }
-    }, [gameOver, paused]);
+        setPaused(prev => {
+            const newPaused = !prev;
+            if (!newPaused && !gameOver) {
+                lastTimeRef.current = performance.now();
+            }
+            return newPaused;
+        });
+    }, [gameOver]);
 
     // 移动方块
-    const moveDown = useCallback((currentPieceLocal) => {
-        if (!collide(currentPieceLocal.shape, currentPieceLocal.x, currentPieceLocal.y + 1, board)) {
-            currentPieceLocal.y++;
+    const moveDown = useCallback(() => {
+        const piece = currentPieceRef.current;
+        if (!piece) return false;
+
+        if (!collide(piece.shape, piece.x, piece.y + 1, board)) {
+            const newPiece = { ...piece, y: piece.y + 1 };
+            setCurrentPiece(newPiece);
             return false;
         } else {
-            lockPiece(board, currentPieceLocal);
-            setBoard([...board.map(row => [...row])]);
-            return true;
-        }
-    }, [board]);
+            // 锁定方块
+            const lockedBoard = lockPiece(board, piece);
+            const { newBoard, linesCleared } = checkLines(lockedBoard);
+            setBoard(newBoard);
 
-    const moveLeft = useCallback((currentPieceLocal) => {
-        if (!collide(currentPieceLocal.shape, currentPieceLocal.x - 1, currentPieceLocal.y, board)) {
-            currentPieceLocal.x--;
-        }
-    }, [board]);
+            if (linesCleared > 0) {
+                const points = [0, 100, 300, 500, 800];
+                const newScore = score + points[linesCleared] * level;
+                setScore(newScore);
 
-    const moveRight = useCallback((currentPieceLocal) => {
-        if (!collide(currentPieceLocal.shape, currentPieceLocal.x + 1, currentPieceLocal.y, board)) {
-            currentPieceLocal.x++;
-        }
-    }, [board]);
-
-    // 绘制当前方块
-    const drawPiece = useCallback(() => {
-        if (!currentPiece || !boardCanvasRef.current) return;
-        for (let row = 0; row < currentPiece.shape.length; row++) {
-            for (let col = 0; col < currentPiece.shape[row].length; col++) {
-                if (currentPiece.shape[row][col]) {
-                    drawBlock(
-                        boardCanvasRef.current.getContext('2d'),
-                        currentPiece.x + col,
-                        currentPiece.y + row,
-                        currentPiece.color,
-                        CONSTANTS.BLOCK_SIZE
+                const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
+                if (newLevel > level) {
+                    setLevel(newLevel);
+                    dropIntervalRef.current = Math.max(
+                        CONSTANTS.MIN_DROP_INTERVAL,
+                        CONSTANTS.INITIAL_DROP_INTERVAL - (newLevel - 1) * 100
                     );
                 }
             }
+
+            // 生成新方块
+            const result = spawnPiece(nextPiece);
+            setNextPiece(result.nextPiece);
+            setCurrentPiece(result.currentPiece);
+
+            // 检查游戏结束
+            if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
+                setGameOver(true);
+            }
+            return true;
         }
-    }, [currentPiece]);
+    }, [board, score, level, nextPiece]);
+
+    const moveLeft = useCallback(() => {
+        const piece = currentPieceRef.current;
+        if (!piece) return;
+        if (!collide(piece.shape, piece.x - 1, piece.y, board)) {
+            setCurrentPiece({ ...piece, x: piece.x - 1 });
+        }
+    }, [board]);
+
+    const moveRight = useCallback(() => {
+        const piece = currentPieceRef.current;
+        if (!piece) return;
+        if (!collide(piece.shape, piece.x + 1, piece.y, board)) {
+            setCurrentPiece({ ...piece, x: piece.x + 1 });
+        }
+    }, [board]);
+
+    const rotate = useCallback(() => {
+        const piece = currentPieceRef.current;
+        if (!piece) return;
+        const rotatedPiece = rotatePiece(piece, board);
+        setCurrentPiece(rotatedPiece);
+    }, [board]);
 
     // 游戏主循环
-    const gameLoop = useCallback((currentTime) => {
-        if (gameOver || paused) return;
+    useEffect(() => {
+        if (gameOver || paused || !currentPiece) return;
 
-        const deltaTime = currentTime - lastTimeRef;
+        const gameLoop = (currentTime) => {
+            if (gameOver || paused) return;
 
-        if (deltaTime >= dropIntervalRef.current) {
-            moveDown(currentPiece);
-            lastTimeRef = currentTime;
-        }
+            const deltaTime = currentTime - lastTimeRef.current;
 
-        drawBoard(
-            boardCanvasRef.current.getContext('2d'),
-            board,
-            CONSTANTS.ROWS,
-            CONSTANTS.COLS,
-            CONSTANTS.BLOCK_SIZE
-        );
-        drawPiece();
+            if (deltaTime >= dropIntervalRef.current) {
+                moveDown();
+                lastTimeRef.current = currentTime;
+            }
 
-        animationIdRef = requestAnimationFrame(gameLoop);
-    }, [board, currentPiece, gameOver, paused, moveDown, drawBoard, drawPiece]);
+            animationIdRef.current = requestAnimationFrame(gameLoop);
+        };
+
+        animationIdRef.current = requestAnimationFrame(gameLoop);
+
+        return () => {
+            if (animationIdRef.current !== null) {
+                cancelAnimationFrame(animationIdRef.current);
+            }
+        };
+    }, [gameOver, paused, currentPiece, moveDown]);
 
     // 处理键盘事件
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (gameOver || isGameOverRef) return;
+            if (gameOver) return;
 
             switch (e.key) {
                 case 'ArrowLeft':
-                    if (!isPausedRef) moveLeft(currentPiece);
+                    if (!paused) moveLeft();
                     break;
                 case 'ArrowRight':
-                    if (!isPausedRef) moveRight(currentPiece);
+                    if (!paused) moveRight();
                     break;
                 case 'ArrowDown':
-                    if (!isPausedRef) moveDown(currentPiece);
+                    if (!paused) moveDown();
                     break;
                 case 'ArrowUp':
-                    rotate(currentPiece, board);
-                    drawPiece();
+                    if (!paused) rotate();
                     break;
                 case ' ':
                     e.preventDefault();
@@ -391,51 +431,7 @@ export function GameProvider({ children }) {
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [gameOver, currentPiece, board, moveLeft, moveRight, moveDown, rotate, drawPiece, togglePause]);
-
-    // 清理动画帧
-    useEffect(() => {
-        return () => {
-            if (animationIdRef !== null) {
-                cancelAnimationFrame(animationIdRef);
-            }
-        };
-    }, []);
-
-    // 游戏结束检测
-    useEffect(() => {
-        if (currentPiece && collide(currentPiece.shape, currentPiece.x, currentPiece.y, board)) {
-            setGameOver(true);
-            isGameOverRef = true;
-            if (animationIdRef !== null) {
-                cancelAnimationFrame(animationIdRef);
-            }
-        }
-    }, [currentPiece, board]);
-
-    // 渲染函数
-    const renderBoard = useCallback(() => {
-        if (!boardCanvasRef.current || !currentPiece) return;
-
-        drawBoard(
-            boardCanvasRef.current.getContext('2d'),
-            board,
-            CONSTANTS.ROWS,
-            CONSTANTS.COLS,
-            CONSTANTS.BLOCK_SIZE
-        );
-        drawPiece();
-    }, [board, currentPiece, drawBoard, drawPiece]);
-
-    const renderNextPiece = useCallback(() => {
-        if (!nextCanvasRef.current || !nextPiece) return;
-
-        drawNextPiece(
-            nextCanvasRef.current.getContext('2d'),
-            nextPiece,
-            20
-        );
-    }, [nextPiece]);
+    }, [gameOver, paused, moveLeft, moveRight, moveDown, rotate, togglePause]);
 
     // 提供状态和方法
     const value = {
@@ -446,18 +442,11 @@ export function GameProvider({ children }) {
         level,
         gameOver,
         paused,
-        setBoard,
-        setCurrentPiece,
-        setNextPiece,
-        setScore,
-        setLevel,
-        setGameOver,
-        setPaused,
-        startGame,
-        togglePause,
         boardCanvasRef,
         nextCanvasRef,
-        renderBoard,
+        startGame,
+        togglePause,
+        renderGame,
         renderNextPiece
     };
 
