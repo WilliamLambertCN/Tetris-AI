@@ -465,16 +465,22 @@ export function GameProvider({ children }) {
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
 
+    // 快速执行 AI 动作（10ms间隔，无延迟）
     useEffect(() => {
         if (!aiMode || gameOver) return;
-        const interval = setInterval(() => {
+        
+        let animationFrameId;
+        const processActions = () => {
+            // 一次执行所有动作
             while (aiActionQueueRef.current.length > 0) {
                 const action = aiActionQueueRef.current.shift();
-                console.log('[AI] Executing action:', action);
                 executeAiAction(action);
             }
-        }, 50);
-        return () => clearInterval(interval);
+            animationFrameId = requestAnimationFrame(processActions);
+        };
+        
+        animationFrameId = requestAnimationFrame(processActions);
+        return () => cancelAnimationFrame(animationFrameId);
     }, [aiMode, gameOver, executeAiAction]);
 
     // ========================================
