@@ -38,6 +38,7 @@ class TetrisAIController:
         self.last_piece_y: int = -1  # 上次方块的Y位置
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
+        self.fast_dropping = False  # 是否处于快速下降模式
         
         # 配置日志级别
         self.verbose = True
@@ -136,10 +137,10 @@ class TetrisAIController:
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 检测新方块：类型变化，或(队列为空且方块在顶部)
+            # 检测新方块：类型变化，或(快速下降模式下方块回到顶部)
             is_new_piece = (
                 piece_type != self.last_piece_type or 
-                (not self.action_queue and piece_y <= 1 and self.last_piece_y > 10)
+                (self.fast_dropping and piece_y <= 1 and self.last_piece_y > 10)
             )
             
             if is_new_piece:
@@ -153,9 +154,25 @@ class TetrisAIController:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
+                
+                # 如果执行了 hard_drop，切换到快速下降模式
+                if action == Action.HARD_DROP:
+                    self.fast_dropping = True
+                    self.log(f"执行硬降，开始快速下降")
+                
                 time.sleep(0.01)
+            elif self.fast_dropping:
+                # 快速下降模式：持续 down 直到新方块
+                if piece_y <= 2 and self.last_piece_y > 10:
+                    # 新方块已经出现
+                    self.fast_dropping = False
+                else:
+                    # 还在下落，持续 down
+                    self._execute_action(Action.MOVE_DOWN)
+                    self.stats.total_actions += 1
+                    time.sleep(0.05)  # 0.05秒间隔，加速下落
             else:
-                # 队列为空，等待新方块
+                # 队列为空且不在快速下降模式，等待
                 time.sleep(0.01)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
