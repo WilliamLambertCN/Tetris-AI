@@ -167,6 +167,9 @@ class TetrisAIController:
             # 执行动作（每次只执行一个）
             if self.action_queue:
                 action = self.action_queue.pop(0)
+                # 调试：打印动作队列状态
+                if action == Action.MOVE_DOWN:
+                    print(f"[DEBUG] Executing DOWN, queue remaining: {[a.value for a in self.action_queue]}")
                 self._execute_action(action)
                 self.stats.total_actions += 1
             
@@ -213,6 +216,7 @@ class TetrisAIController:
         
         if actions:
             self.action_queue = actions
+            print(f"[DEBUG] New actions generated: {[a.value for a in actions]}")
             
             # 计算目标位置
             target_pos = self._calculate_target(ai_state, actions)
