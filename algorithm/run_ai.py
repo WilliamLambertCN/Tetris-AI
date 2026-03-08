@@ -164,9 +164,11 @@ class TetrisAIController:
                 continue
             
             # 阶段2：如果在target正上方且正在下降模式，while循环down
+            # 注意：hard_drop后方块已经落地，新方块生成，此时piece_x应该等于target_x
             if self.dropping and piece_x == self.target_x:
-                # 循环调用down，直到新方块出现
-                while True:
+                # 已经执行了hard_drop且方块在目标位置，快速下降直到新方块
+                drop_count = 0
+                while drop_count < 30:  # 最多30次下降
                     # 获取最新状态
                     state = self.api.get_state()
                     if not state or state.get('gameOver'):
@@ -176,19 +178,26 @@ class TetrisAIController:
                     if not current_piece:
                         break
                     
-                    piece_type = current_piece.get('type')
-                    piece_x = current_piece.get('x', 0)
-                    piece_y = current_piece.get('y', 0)
+                    piece_type_new = current_piece.get('type')
+                    piece_y_new = current_piece.get('y', 0)
                     
-                    # 检测新方块：类型变化，或(方块回到顶部且上次Y>10)
-                    if piece_type != self.last_piece_type or (piece_y <= 1 and self.last_piece_y > 10):
-                        self.log(f"检测到新方块，退出快速下降")
+                    # 检测新方块：类型变化，或Y位置回到顶部
+                    if piece_type_new != self.last_piece_type:
+                        self.log(f"检测到新方块 {piece_type_new}，退出快速下降")
                         break
                     
-                    # 发送down
+                    # 如果Y位置长时间不变，说明已经到底了，等待新方块
+                    if drop_count > 0 and piece_y_new == self.last_piece_y and piece_y_new > 15:
+                        # 可能已经到底，稍微等待再检测
+                        time.sleep(0.1)
+                        drop_count += 1
+                        continue
+                    
+                    # 发送down加速下落
                     self._execute_action(Action.MOVE_DOWN)
                     self.stats.total_actions += 1
-                    self.last_piece_y = piece_y
+                    self.last_piece_y = piece_y_new
+                    drop_count += 1
                     
                     # 间隔0.1s
                     time.sleep(0.1)
