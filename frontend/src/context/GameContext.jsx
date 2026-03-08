@@ -441,9 +441,10 @@ export function GameProvider({ children }) {
     // ========================================
 
     useEffect(() => {
-        if (gameOver || paused || !currentPiece) return;
+        // AI 模式下禁用自然重力，由 AI 完全控制
+        if (gameOver || paused || !currentPiece || aiMode) return;
         const gameLoop = (currentTime) => {
-            if (gameOver || paused) return;
+            if (gameOver || paused || aiMode) return;  // 再次检查 AI 模式
             const deltaTime = currentTime - lastTimeRef.current;
             if (deltaTime >= dropIntervalRef.current) {
                 moveDown();
@@ -458,7 +459,7 @@ export function GameProvider({ children }) {
                 cancelAnimationFrame(animationIdRef.current);
             }
         };
-    }, [gameOver, paused, currentPiece, moveDown, renderGame]);
+    }, [gameOver, paused, currentPiece, moveDown, renderGame, aiMode]);
 
     // ========================================
     // AI 动作轮询
@@ -494,8 +495,8 @@ export function GameProvider({ children }) {
         if (!aiMode || gameOver) return;
         
         const interval = setInterval(() => {
-            // 一次执行最多5个动作，避免阻塞
-            for (let i = 0; i < 5 && aiActionQueueRef.current.length > 0; i++) {
+            // AI 模式下一次性执行所有动作（快速放置）
+            while (aiActionQueueRef.current.length > 0) {
                 const action = aiActionQueueRef.current.shift();
                 executeAiAction(action);
             }
