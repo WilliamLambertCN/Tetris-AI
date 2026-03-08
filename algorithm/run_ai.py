@@ -129,7 +129,7 @@ class TetrisAIController:
                     self.log("DEBUG - No state received", "DEBUG")
             
             if not state:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
             
             # 检查游戏结束
@@ -140,7 +140,7 @@ class TetrisAIController:
             # 检查当前方块
             current_piece = state.get('currentPiece')
             if not current_piece:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
             
             # 检测新方块
@@ -169,8 +169,8 @@ class TetrisAIController:
                 self._execute_action(action)
                 self.stats.total_actions += 1
             
-            # 短暂休眠避免CPU占用过高
-            time.sleep(0.005)
+            # 短暂休眠，保持高频轮询
+            time.sleep(0.003)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""

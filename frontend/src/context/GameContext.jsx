@@ -211,6 +211,7 @@ export function GameProvider({ children }) {
     const lastTimeRef = useRef(0);
     const currentPieceRef = useRef(null);
     const aiActionQueueRef = useRef([]);
+    const aiTargetYRef = useRef(null);
 
     const initBoard = useCallback(() => {
         return Array.from({ length: CONSTANTS.ROWS }, () => Array(CONSTANTS.COLS).fill(null));
@@ -334,7 +335,7 @@ export function GameProvider({ children }) {
             } catch (err) {
                 // 静默处理
             }
-        }, 50); // 50ms 上报一次
+        }, 20); // 20ms 上报一次，让 AI 更快获取最新状态
         
         return () => clearInterval(interval);
     }, [aiMode, board, currentPiece, nextPiece, score, level, gameOver]);
@@ -423,8 +424,50 @@ export function GameProvider({ children }) {
             case 'down': 
                 moveDown(); 
                 break;
-            case 'hard_drop':
-                console.log('[AI] Hard drop starting');
+            case 'hard_drop': {
+                const targetY = aiTargetYRef.current;
+                console.log('[AI] Hard drop starting, current Y:', currentPieceRef.current?.y, 'target Y:', targetY);
+                const piece = currentPieceRef.current;
+                const currentBoard = board;
+                
+                // 如果有目标 Y 且当前位置低于目标，尝试直接落到目标 Y
+                if (piece && targetY !== null && targetY > piece.y) {
+                    // 检查从当前 Y 到目标 Y 的路径是否畅通
+                    let canTeleport = true;
+                    for (let testY = piece.y + 1; testY <= targetY; testY++) {
+                        if (collide(piece.shape, piece.x, testY, currentBoard)) {
+                            canTeleport = false;
+                            break;
+                        }
+                    }
+                    if (canTeleport) {
+                        console.log('[AI] Teleporting to target Y:', targetY);
+                        // 直接设置到目标 Y 并锁定
+                        const pieceAtTarget = { ...piece, y: targetY };
+                        setCurrentPiece(pieceAtTarget);
+                        const lockedBoard = lockPiece(currentBoard, pieceAtTarget);
+                        const { newBoard, linesCleared } = checkLines(lockedBoard);
+                        setBoard(newBoard);
+                        if (linesCleared > 0) {
+                            const points = [0, 100, 300, 500, 800];
+                            const newScore = score + points[linesCleared] * level;
+                            setScore(newScore);
+                            const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
+                            if (newLevel > level) {
+                                setLevel(newLevel);
+                            }
+                        }
+                        const result = spawnPiece(nextPiece);
+                        setNextPiece(result.nextPiece);
+                        setCurrentPiece(result.currentPiece);
+                        if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
+                            setGameOver(true);
+                        }
+                        aiTargetYRef.current = null; // 重置目标 Y
+                        break;
+                    }
+                }
+                // 否则使用普通下落
                 let count = 0;
                 while (count < 30) {
                     const landed = moveDown();
@@ -432,19 +475,20 @@ export function GameProvider({ children }) {
                     if (landed) break;
                 }
                 console.log('[AI] Hard drop complete, steps:', count);
+                aiTargetYRef.current = null; // 重置目标 Y
                 break;
+            }
         }
     }, [aiMode, paused, gameOver, moveLeft, moveRight, rotate, moveDown]);
 
     // ========================================
-    // 游戏主循环
+    // 游戏主循环 (保持自然重力，AI 在真实环境下运行)
     // ========================================
 
     useEffect(() => {
-        // AI 模式下禁用自然重力，由 AI 完全控制
-        if (gameOver || paused || !currentPiece || aiMode) return;
+        if (gameOver || paused || !currentPiece) return;
         const gameLoop = (currentTime) => {
-            if (gameOver || paused || aiMode) return;  // 再次检查 AI 模式
+            if (gameOver || paused) return;
             const deltaTime = currentTime - lastTimeRef.current;
             if (deltaTime >= dropIntervalRef.current) {
                 moveDown();
@@ -459,13 +503,13 @@ export function GameProvider({ children }) {
                 cancelAnimationFrame(animationIdRef.current);
             }
         };
-    }, [gameOver, paused, currentPiece, moveDown, renderGame, aiMode]);
+    }, [gameOver, paused, currentPiece, moveDown, renderGame]);
 
     // ========================================
     // AI 动作轮询
     // ========================================
 
-    // 获取 AI 动作
+    // 获取 AI 动作 - 高频轮询
     useEffect(() => {
         if (!aiMode || gameOver) return;
         const interval = setInterval(async () => {
@@ -486,21 +530,21 @@ export function GameProvider({ children }) {
             } catch (err) {
                 console.error('Failed to get AI actions:', err);
             }
-        }, 30);
+        }, 20); // 20ms 轮询一次
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
 
-    // 快速执行 AI 动作 - 使用同步循环
+    // 快速执行 AI 动作 - 使用同步循环，尽可能快地执行
     useEffect(() => {
         if (!aiMode || gameOver) return;
         
         const interval = setInterval(() => {
-            // AI 模式下一次性执行所有动作（快速放置）
+            // 快速执行所有动作，在重力影响下尽快完成
             while (aiActionQueueRef.current.length > 0) {
                 const action = aiActionQueueRef.current.shift();
                 executeAiAction(action);
             }
-        }, 16); // ~60fps
+        }, 5); // 每 5ms 检查一次，约 200fps 的响应速度
         
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
@@ -515,6 +559,10 @@ export function GameProvider({ children }) {
             try {
                 const response = await aiApi.getThinking();
                 const thinking = response.data;
+                // 更新 ref 以便 hard_drop 使用
+                if (thinking.targetY !== null && thinking.targetY !== undefined) {
+                    aiTargetYRef.current = thinking.targetY;
+                }
                 setAiThinking({
                     isThinking: thinking.isThinking || false,
                     targetX: thinking.targetX,
@@ -525,7 +573,7 @@ export function GameProvider({ children }) {
                     searchTime: thinking.searchTime || 0
                 });
             } catch (err) {}
-        }, 100);
+        }, 50);
         return () => clearInterval(interval);
     }, [aiMode]);
 
