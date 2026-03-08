@@ -168,6 +168,13 @@ class TetrisAIController:
         piece_x = state.get('currentPiece', {}).get('x', 0)
         piece_y = state.get('currentPiece', {}).get('y', 0)
         
+        # 调试输出
+        if not board or len(board) != 20:
+            self.log(f"棋盘数据异常: {len(board) if board else 'None'} 行", "ERROR")
+            return
+        
+        self.log(f"初始位置: X={piece_x}, Y={piece_y}, 棋盘非零格数: {sum(sum(row) for row in board)}", "DEBUG")
+        
         ai_state = create_initial_state(board, piece_type, piece_x, piece_y)
         
         # 运行 A* 搜索
