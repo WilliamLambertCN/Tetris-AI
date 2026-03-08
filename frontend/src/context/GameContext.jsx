@@ -210,6 +210,7 @@ export function GameProvider({ children }) {
     const animationIdRef = useRef(null);
     const lastTimeRef = useRef(0);
     const currentPieceRef = useRef(null);
+    const boardRef = useRef(null);
     const aiActionQueueRef = useRef([]);
 
     const initBoard = useCallback(() => {
@@ -238,6 +239,10 @@ export function GameProvider({ children }) {
     useEffect(() => {
         currentPieceRef.current = currentPiece;
     }, [currentPiece]);
+    
+    useEffect(() => {
+        boardRef.current = board;
+    }, [board]);
 
     // ========================================
     // 渲染函数
@@ -429,62 +434,30 @@ export function GameProvider({ children }) {
                 moveDown(); 
                 break;
             case 'hard_drop': {
-                // AI 硬降：使用函数式更新确保获取最新board
-                const startY = currentPieceRef.current?.y;
-                const beforeCells = countBoardCells(board);
-                console.log(`[AI] Hard drop starting, Y: ${startY}, cells before: ${beforeCells}`);
+                // AI 硬降：使用 boardRef 获取最新 board 状态
+                console.log('[AI] Hard drop starting');
                 
-                // 使用函数式更新，确保获取最新状态
-                setBoard(prevBoard => {
-                    let piece = currentPieceRef.current;
-                    if (!piece) return prevBoard;
+                let count = 0;
+                while (count < 30) {
+                    const piece = currentPieceRef.current;
+                    const currentBoard = boardRef.current;
+                    if (!piece || !currentBoard) break;
                     
-                    // 找到最终下落位置
-                    let finalY = piece.y;
-                    while (finalY < CONSTANTS.ROWS - 1 && !collide(piece.shape, piece.x, finalY + 1, prevBoard)) {
-                        finalY++;
+                    // 检查是否还能下落（使用最新 board）
+                    const canMoveDown = !collide(piece.shape, piece.x, piece.y + 1, currentBoard);
+                    if (!canMoveDown) {
+                        // 触底了，执行 lock
+                        console.log('[AI] Hard drop landed at Y:', piece.y);
+                        moveDown(); // 这会触发 lock 和生成新方块
+                        break;
                     }
                     
-                    // 锁定方块到最终位置
-                    const lockedBoard = lockPiece(prevBoard, { ...piece, y: finalY });
-                    const lockedCells = countBoardCells(lockedBoard);
-                    
-                    const { newBoard, linesCleared } = checkLines(lockedBoard);
-                    const afterCells = countBoardCells(newBoard);
-                    
-                    // 检查消除是否异常
-                    const cellsRemoved = lockedCells - afterCells;
-                    if (linesCleared > 0 && cellsRemoved !== linesCleared * 10) {
-                        console.error(`[AI] ERROR: 消除异常！消除${linesCleared}行，但移除了${cellsRemoved}格，期望${linesCleared * 10}格`);
-                    }
-                    
-                    console.log(`[AI] Hard drop: locked=${lockedCells}, after=${afterCells}, lines=${linesCleared}, removed=${cellsRemoved}`);
-                    
-                    // 更新分数
-                    if (linesCleared > 0) {
-                        const points = [0, 100, 300, 500, 800];
-                        setScore(prevScore => {
-                            const newScore = prevScore + points[linesCleared] * level;
-                            const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
-                            if (newLevel > level) {
-                                setLevel(newLevel);
-                            }
-                            return newScore;
-                        });
-                    }
-                    
-                    // 生成新方块
-                    const result = spawnPiece(nextPiece);
-                    setNextPiece(result.nextPiece);
-                    setCurrentPiece(result.currentPiece);
-                    
-                    if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
-                        setGameOver(true);
-                    }
-                    
-                    return newBoard;
-                });
+                    // 下落一格
+                    moveDown();
+                    count++;
+                }
                 
+                console.log('[AI] Hard drop complete, steps:', count);
                 break;
             }
         }
