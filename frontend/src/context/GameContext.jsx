@@ -424,55 +424,51 @@ export function GameProvider({ children }) {
                 moveDown(); 
                 break;
             case 'hard_drop': {
-                // AI 硬降：使用函数式更新确保获取最新状态
+                // AI 硬降：同步计算最终位置，一次性更新状态
                 console.log('[AI] Hard drop starting, current Y:', currentPieceRef.current?.y);
-                let count = 0;
-                let landed = false;
                 
-                while (count < 30 && !landed) {
-                    const piece = currentPieceRef.current;
-                    if (!piece) break;
-                    
-                    // 使用函数式更新获取最新 board
-                    setBoard(prevBoard => {
-                        if (!collide(piece.shape, piece.x, piece.y + 1, prevBoard)) {
-                            // 可以下落，更新 piece 位置
-                            setCurrentPiece({ ...piece, y: piece.y + 1 });
-                            return prevBoard;
-                        } else {
-                            // 触底，锁定方块
-                            landed = true;
-                            const lockedBoard = lockPiece(prevBoard, piece);
-                            const { newBoard, linesCleared } = checkLines(lockedBoard);
-                            
-                            // 更新分数和等级
-                            if (linesCleared > 0) {
-                                const points = [0, 100, 300, 500, 800];
-                                const newScore = score + points[linesCleared] * level;
-                                setScore(newScore);
-                                const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
-                                if (newLevel > level) {
-                                    setLevel(newLevel);
-                                }
-                            }
-                            
-                            // 生成新方块
-                            const result = spawnPiece(nextPiece);
-                            setNextPiece(result.nextPiece);
-                            setCurrentPiece(result.currentPiece);
-                            
-                            if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
-                                setGameOver(true);
-                            }
-                            
-                            return newBoard;
-                        }
-                    });
-                    
-                    count++;
+                const piece = currentPieceRef.current;
+                if (!piece) break;
+                
+                // 获取当前棋盘（使用 ref 确保最新）
+                const currentBoard = board;
+                
+                // 计算下落到底的位置
+                let finalY = piece.y;
+                while (finalY < CONSTANTS.ROWS - 1 && !collide(piece.shape, piece.x, finalY + 1, currentBoard)) {
+                    finalY++;
                 }
                 
-                console.log('[AI] Hard drop complete, steps:', count, 'landed:', landed);
+                console.log('[AI] Hard drop final Y:', finalY);
+                
+                // 锁定方块
+                const lockedBoard = lockPiece(currentBoard, { ...piece, y: finalY });
+                const { newBoard, linesCleared } = checkLines(lockedBoard);
+                
+                // 更新棋盘
+                setBoard(newBoard);
+                
+                // 更新分数
+                if (linesCleared > 0) {
+                    const points = [0, 100, 300, 500, 800];
+                    const newScore = score + points[linesCleared] * level;
+                    setScore(newScore);
+                    const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
+                    if (newLevel > level) {
+                        setLevel(newLevel);
+                    }
+                }
+                
+                // 生成新方块
+                const result = spawnPiece(nextPiece);
+                setNextPiece(result.nextPiece);
+                setCurrentPiece(result.currentPiece);
+                
+                if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
+                    setGameOver(true);
+                }
+                
+                console.log('[AI] Hard drop complete, lines cleared:', linesCleared);
                 break;
             }
         }
