@@ -137,19 +137,14 @@ class TetrisAIController:
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 检测新方块：类型变化，或(正在下降模式下方块从高处回到顶部)
-            is_new_piece = (
-                piece_type != self.last_piece_type or 
-                (self.dropping and piece_y <= 1 and self.last_piece_y > 10)
-            )
-            
-            if is_new_piece:
+            # 检测新方块：类型变化
+            if piece_type != self.last_piece_type:
                 self._handle_new_piece(state, piece_type)
             
             # 更新上次Y位置
             self.last_piece_y = piece_y
             
-            # 阶段1：执行动作队列（旋转和水平移动）
+            # 阶段1：执行动作队列（旋转、水平移动）
             if self.action_queue:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
@@ -158,21 +153,17 @@ class TetrisAIController:
                 # hard_drop后，进入阶段2
                 if action == Action.HARD_DROP:
                     self.dropping = True
-                    self.log(f"执行硬降，开始在目标位置快速下降")
+                    self.log(f"到达目标位置，开始while循环下降")
                 
                 time.sleep(0.01)
                 continue
             
-            # 阶段2：如果在target正上方且正在下降模式，while循环down
-            # 注意：hard_drop后方块已经落地并生成新方块，此时不应该再发送down
+            # 阶段2：如果在target正上方且正在下降模式，while循环down直到新方块
             if self.dropping and piece_x == self.target_x:
-                # hard_drop已经执行，方块应该已经落地，新方块已生成
-                # 此时只需等待新方块检测，不再发送down
-                self.log(f"hard_drop完成，等待新方块...")
+                self.log(f"开始while循环down，间隔0.1s")
                 
-                # 轮询等待新方块出现
-                wait_count = 0
-                while wait_count < 50:  # 最多等待5秒
+                while True:
+                    # 获取最新状态
                     state = self.api.get_state()
                     if not state or state.get('gameOver'):
                         break
@@ -182,14 +173,20 @@ class TetrisAIController:
                         break
                     
                     piece_type_new = current_piece.get('type')
+                    piece_y_new = current_piece.get('y', 0)
                     
                     # 检测新方块：类型变化
                     if piece_type_new != self.last_piece_type:
-                        self.log(f"检测到新方块 {piece_type_new}")
+                        self.log(f"检测到新方块 {piece_type_new}，退出while循环")
                         break
                     
+                    # 发送down加速下落
+                    self._execute_action(Action.MOVE_DOWN)
+                    self.stats.total_actions += 1
+                    self.last_piece_y = piece_y_new
+                    
+                    # 间隔0.1s
                     time.sleep(0.1)
-                    wait_count += 1
                 
                 self.dropping = False
             else:
