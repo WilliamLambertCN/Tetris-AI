@@ -165,8 +165,16 @@ class TetrisAIController:
             # 更新记录
             self.last_cell_count = current_cell_count
             
-            # 检测新方块：类型变化
-            if piece_type != self.last_piece_type:
+            # 检测新方块：类型变化，或(队列为空且方块在顶部且Y位置变化大)
+            is_new_piece = (
+                piece_type != self.last_piece_type or  # 类型变化
+                (not self.action_queue and piece_y <= 1 and self.last_piece_y > 10)  # 同一类型的新方块
+            )
+            
+            if is_new_piece:
+                # 如果是同一类型，打印提示
+                if piece_type == self.last_piece_type:
+                    self.log(f"检测到同类型新方块: {piece_type}")
                 self._handle_new_piece(state, piece_type)
             
             # 更新上次Y位置
