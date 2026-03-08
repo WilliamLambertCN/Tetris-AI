@@ -1,95 +1,106 @@
 """
-run_ai.py
-
-A* AI 自动化运行脚本
-
-@description 本脚本是 AI 控制的主入口：
-    1. 连接到游戏后端
-    2. 切换到 AI 模式
-    3. 持续获取游戏状态
-    4. 使用 A* 算法计算最佳动作
-    5. 发送动作指令控制游戏
-    6. 上报思考状态供前端可视化
-
-@usage
-    python run_ai.py
-
-@requirements
-    pip install requests
+run_ai.py - A* AI 自动化运行脚本（带详细日志）
 """
 
 import time
 import sys
 from typing import Optional
+from dataclasses import dataclass
 
 from api_client import TetrisAPI
-from tetris_ai import AStarTetris, TetrisState, Action, create_initial_state
+from tetris_ai import AStarTetris, TetrisState, Action, create_initial_state, simulate_place_piece, evaluate_board, get_column_heights
+
+
+@dataclass
+class GameStats:
+    """游戏统计"""
+    piece_count: int = 0
+    total_actions: int = 0
+    total_score: int = 0
+    start_time: float = 0
+    
+    def get_apm(self) -> float:
+        if self.start_time == 0:
+            return 0
+        duration = time.time() - self.start_time
+        return self.total_actions / duration * 60 if duration > 0 else 0
 
 
 class TetrisAIController:
-    """
-    AI 游戏控制器
-    
-    协调 API 客户端和 A* 算法，实现自动游戏
-    """
+    """AI 游戏控制器（带详细日志）"""
     
     def __init__(self, api_base_url: str = "http://127.0.0.1:8080/api"):
-        """
-        Args:
-            api_base_url: API 基础 URL
-        """
         self.api = TetrisAPI(api_base_url)
-        self.ai = AStarTetris(max_search_time=0.5)
-        
-        # 统计
-        self.total_actions = 0
-        self.total_pieces = 0
-        self.start_time = None
-        
-        # 当前动作队列
-        self.action_queue: list[Action] = []
-        
-        # 上一次的方块类型（用于检测新方块）
+        self.ai = AStarTetris(max_search_time=0.3)  # 减少搜索时间，提高响应速度
+        self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
+        self.action_queue: list[Action] = []
+        self.current_piece_id = 0
         
-        # 目标位置（用于可视化）
-        self.target_position = {"x": None, "y": None, "rotation": None}
+        # 配置日志级别
+        self.verbose = True
+    
+    def log(self, message: str, level: str = "INFO"):
+        """打印日志"""
+        if not self.verbose and level == "DEBUG":
+            return
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        print(f"[{timestamp}] [{level}] {message}")
+    
+    def log_decision(self, piece_type: str, actions: List[Action], target_pos: dict, evaluation: float, search_time: float, nodes: int):
+        """打印决策日志"""
+        print("\n" + "=" * 60)
+        print(f"🎯 决策 #{self.current_piece_id} | 方块: {piece_type}")
+        print("=" * 60)
+        
+        # 动作序列
+        action_str = " -> ".join([a.value for a in actions[:8]])
+        if len(actions) > 8:
+            action_str += f" ... ({len(actions)} 个动作)"
+        print(f"📋 动作序列: {action_str}")
+        
+        # 目标位置
+        print(f"📍 目标位置: X={target_pos['x']}, Y={target_pos['y']}, 旋转={target_pos['rotation']}")
+        
+        # 评估分数
+        print(f"📊 棋盘评估分数: {evaluation:+.2f}")
+        
+        # 搜索统计
+        print(f"🔍 搜索统计: 时间={search_time*1000:.1f}ms, 节点数={nodes}")
+        print("=" * 60 + "\n")
     
     def run(self):
         """运行 AI 控制器"""
-        print("=" * 50)
-        print("🎮 Tetris A* AI Controller")
-        print("=" * 50)
+        print("=" * 60)
+        print("🎮 Tetris A* AI Controller (详细日志模式)")
+        print("=" * 60)
         
-        # 1. 等待服务器
+        # 连接服务器
         if not self.api.wait_for_server(max_wait=30):
-            print("❌ Cannot connect to game server!")
-            print("Please start the backend server first:")
-            print("  cd backend && npm start")
+            print("❌ 无法连接到游戏服务器!")
+            print("请先启动后端: cd backend && node server.js")
             sys.exit(1)
         
-        # 2. 切换到 AI 模式
-        print("\n🤖 Switching to AI mode...")
+        # 切换到 AI 模式
+        self.log("切换到 AI 模式...")
         try:
             self.api.set_mode('AI')
-            print("✅ AI mode activated!")
+            self.log("✅ AI 模式已激活")
         except Exception as e:
-            print(f"⚠️  Failed to set AI mode: {e}")
+            self.log(f"⚠️  切换模式失败: {e}", "WARN")
         
-        # 3. 开始游戏（如果没有运行）
-        print("\n🎲 Starting game...")
+        # 开始游戏
+        self.log("开始新游戏...")
         try:
             self.api.start_game()
-            print("✅ Game started!")
+            self.stats.start_time = time.time()
+            self.log("✅ 游戏已启动")
         except Exception as e:
-            print(f"⚠️  Failed to start game: {e}")
+            self.log(f"⚠️  启动游戏失败: {e}", "WARN")
         
-        self.start_time = time.time()
-        
-        # 4. 主循环
-        print("\n" + "=" * 50)
-        print("🚀 AI is now playing! Press Ctrl+C to stop.")
-        print("=" * 50 + "\n")
+        print("\n" + "=" * 60)
+        print("🚀 AI 正在运行! 按 Ctrl+C 停止")
+        print("=" * 60 + "\n")
         
         try:
             self._main_loop()
@@ -102,32 +113,15 @@ class TetrisAIController:
             # 获取游戏状态
             state = self.api.get_state()
             if not state:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
             
             # 检查游戏结束
             if state.get('gameOver'):
-                print("\n💀 Game Over!")
-                self._print_stats(state)
-                
-                # 上报游戏结束状态
-                self.api.report_thinking(
-                    is_thinking=False,
-                    current_piece=None,
-                    search_nodes=0,
-                    search_time=0
-                )
-                
-                print("\n🔄 Restarting in 3 seconds...")
-                time.sleep(3)
-                self.api.start_game()
-                self.action_queue = []
-                self.total_pieces = 0
-                self.start_time = time.time()
-                self.last_piece_type = None
+                self._handle_game_over(state)
                 continue
             
-            # 检查是否有当前方块
+            # 检查当前方块
             current_piece = state.get('currentPiece')
             if not current_piece:
                 time.sleep(0.05)
@@ -136,117 +130,78 @@ class TetrisAIController:
             # 检测新方块
             piece_type = current_piece.get('type')
             if piece_type != self.last_piece_type:
-                # 新方块，重新规划
-                self.last_piece_type = piece_type
-                self.total_pieces += 1
-                self.action_queue = []
-                
-                # 上报开始思考
-                self.api.report_thinking(
-                    is_thinking=True,
-                    current_piece=current_piece,
-                    planned_actions=[]
-                )
-                
-                # 计算最佳路径
-                self._plan_moves(state)
+                self._handle_new_piece(state, piece_type)
             
-            # 上报当前思考状态（动作执行中）
-            if self.action_queue:
-                self.api.report_thinking(
-                    is_thinking=False,
-                    current_piece=current_piece,
-                    target_x=self.target_position["x"],
-                    target_y=self.target_position["y"],
-                    target_rotation=self.target_position["rotation"],
-                    planned_actions=[a.value for a in self.action_queue[:5]],  # 只显示前5个
-                    search_nodes=self.ai.last_search_nodes if hasattr(self.ai, 'last_search_nodes') else 0,
-                    search_time=self.ai.last_search_time * 1000 if hasattr(self.ai, 'last_search_time') else 0
-                )
-            
-            # 执行动作队列中的动作
+            # 执行动作
             if self.action_queue:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
-                self.total_actions += 1
-            else:
-                # 动作队列为空，可能是方块还没落地
-                # 发送一个 down 动作让它快点落下
-                self._execute_action(Action.MOVE_DOWN)
+                self.stats.total_actions += 1
             
-            # 控制速度
-            time.sleep(0.05)
+            time.sleep(0.03)  # 30ms 执行间隔
     
-    def _plan_moves(self, state: dict):
-        """
-        使用 A* 算法规划动作
+    def _handle_new_piece(self, state: dict, piece_type: str):
+        """处理新方块"""
+        self.last_piece_type = piece_type
+        self.current_piece_id += 1
+        self.stats.piece_count += 1
+        self.action_queue = []
         
-        Args:
-            state: 游戏状态（来自 API）
-        """
-        current_piece = state.get('currentPiece')
-        if not current_piece:
-            return
+        self.log(f"新方块 #{self.current_piece_id}: {piece_type}")
         
         # 构建初始状态
         board = state.get('board', [])
-        piece_type = current_piece.get('type')
-        piece_x = current_piece.get('x', 0)
-        piece_y = current_piece.get('y', 0)
+        piece_x = state.get('currentPiece', {}).get('x', 0)
+        piece_y = state.get('currentPiece', {}).get('y', 0)
         
-        # 如果没有旋转信息，默认为 0
-        rotation = current_piece.get('rotation', 0)
-        
-        # 创建 A* 初始状态
         ai_state = create_initial_state(board, piece_type, piece_x, piece_y)
-        ai_state.rotation = rotation
         
         # 运行 A* 搜索
         start_time = time.time()
         actions = self.ai.find_best_placement(ai_state)
         search_time = time.time() - start_time
         
-        # 保存搜索统计（用于可视化）
-        self.ai.last_search_nodes = getattr(self.ai, 'node_count', 0)
-        self.ai.last_search_time = search_time
-        
         if actions:
             self.action_queue = actions
             
-            # 计算目标位置（用于可视化）
-            self._calculate_target(ai_state, actions)
+            # 计算目标位置
+            target_pos = self._calculate_target(ai_state, actions)
             
-            print(f"🧠 Planned {len(actions)} actions for {piece_type} "
-                  f"(search: {search_time*1000:.1f}ms)")
+            # 打印决策日志
+            self.log_decision(
+                piece_type=piece_type,
+                actions=actions,
+                target_pos=target_pos,
+                evaluation=self.ai.last_evaluation,
+                search_time=search_time,
+                nodes=self.ai.last_search_nodes
+            )
             
-            # 上报思考完成
+            # 上报思考状态
             self.api.report_thinking(
                 is_thinking=False,
-                current_piece=current_piece,
-                target_x=self.target_position["x"],
-                target_y=self.target_position["y"],
-                target_rotation=self.target_position["rotation"],
-                planned_actions=[a.value for a in actions[:5]],
+                current_piece=state.get('currentPiece'),
+                target_x=target_pos['x'],
+                target_y=target_pos['y'],
+                target_rotation=target_pos['rotation'],
+                planned_actions=[a.value for a in actions],
                 search_nodes=self.ai.last_search_nodes,
-                search_time=search_time * 1000
+                search_time=search_time * 1000,
+                evaluation_score=self.ai.last_evaluation
             )
         else:
-            # A* 没找到路径，使用简单策略
-            print(f"⚠️  A* failed for {piece_type}, using fallback")
-            self._fallback_strategy(ai_state)
+            self.log(f"⚠️  A* 搜索失败，使用备用策略", "WARN")
+            # 备用策略：直接硬降
+            self.action_queue = [Action.HARD_DROP]
             
             self.api.report_thinking(
                 is_thinking=False,
-                current_piece=current_piece,
-                planned_actions=[a.value for a in self.action_queue[:5]]
+                current_piece=state.get('currentPiece'),
+                planned_actions=['hard_drop']
             )
     
-    def _calculate_target(self, initial_state: TetrisState, actions: list[Action]):
-        """
-        计算目标位置（用于前端可视化）
-        
-        模拟执行所有动作，得到最终位置
-        """
+    def _calculate_target(self, initial_state: TetrisState, actions: List[Action]) -> dict:
+        """计算目标位置"""
         state = initial_state.copy()
         
         for action in actions:
@@ -259,114 +214,68 @@ class TetrisAIController:
             elif action == Action.MOVE_DOWN:
                 state.piece_y += 1
             elif action == Action.HARD_DROP:
-                # 硬降：一直下落直到碰撞
+                # 硬降：一直下落
                 while True:
                     test_state = state.copy()
                     test_state.piece_y += 1
-                    if self._would_collide(test_state):
+                    if self.ai.check_collision(test_state):
                         break
                     state.piece_y += 1
         
-        self.target_position = {
+        return {
             "x": state.piece_x,
             "y": state.piece_y,
             "rotation": state.rotation
         }
     
-    def _would_collide(self, state: TetrisState) -> bool:
-        """检查是否会碰撞（简化版）"""
-        from tetris_ai import SHAPES, BOARD_WIDTH, BOARD_HEIGHT
-        
-        piece_shape = SHAPES[state.piece_type]['rotations'][state.rotation]
-        
-        for row in range(len(piece_shape)):
-            for col in range(len(piece_shape[row])):
-                if piece_shape[row][col]:
-                    new_x = state.piece_x + col
-                    new_y = state.piece_y + row
-                    
-                    # 边界检查
-                    if new_x < 0 or new_x >= BOARD_WIDTH or new_y >= BOARD_HEIGHT:
-                        return True
-                    
-                    # 方块碰撞检查
-                    if new_y >= 0 and state.board[new_y][new_x]:
-                        return True
-        
-        return False
-    
-    def _fallback_strategy(self, state: TetrisState):
-        """
-        备用策略：当 A* 失败时使用
-        
-        简单的贪心策略：尽量居中，然后硬降
-        """
-        center_x = 10 // 2
-        actions = []
-        
-        # 移动到中心附近
-        while state.piece_x < center_x - 1:
-            actions.append(Action.MOVE_RIGHT)
-            state.piece_x += 1
-        while state.piece_x > center_x - 1:
-            actions.append(Action.MOVE_LEFT)
-            state.piece_x -= 1
-        
-        # 硬降
-        actions.append(Action.HARD_DROP)
-        
-        self.action_queue = actions
-    
     def _execute_action(self, action: Action):
-        """
-        执行单个动作
-        
-        Args:
-            action: 动作枚举
-        """
-        action_name = action.value
+        """执行动作"""
         try:
-            self.api.send_action(action_name)
+            self.api.send_action(action.value)
         except Exception as e:
-            print(f"❌ Failed to execute {action_name}: {e}")
+            self.log(f"❌ 执行动作失败 {action.value}: {e}", "ERROR")
     
-    def _print_stats(self, state: dict):
-        """打印游戏统计"""
-        if not self.start_time:
-            return
-        
-        duration = time.time() - self.start_time
+    def _handle_game_over(self, state: dict):
+        """处理游戏结束"""
         score = state.get('score', 0)
-        level = state.get('level', 1)
+        self.stats.total_score = score
         
-        print("\n📊 Game Statistics:")
-        print(f"   Score: {score}")
-        print(f"   Level: {level}")
-        print(f"   Pieces: {self.total_pieces}")
-        print(f"   Actions: {self.total_actions}")
-        print(f"   Duration: {duration:.1f}s")
-        if duration > 0:
-            print(f"   APM: {self.total_actions / duration * 60:.1f}")
-    
-    def _stop(self):
-        """停止 AI 控制器"""
-        print("\n\n🛑 Stopping AI controller...")
+        print("\n" + "=" * 60)
+        print("💀 游戏结束!")
+        print("=" * 60)
+        print(f"📊 最终分数: {score}")
+        print(f"🧩 放置方块数: {self.stats.piece_count}")
+        print(f"🎮 总动作数: {self.stats.total_actions}")
+        print(f"⏱️  游戏时长: {time.time() - self.stats.start_time:.1f}s")
+        print(f"⚡ APM: {self.stats.get_apm():.1f}")
+        print("=" * 60 + "\n")
         
         # 上报停止状态
-        self.api.report_thinking(
-            is_thinking=False,
-            current_piece=None,
-            planned_actions=[]
-        )
+        self.api.report_thinking(is_thinking=False)
         
-        # 切换回手动模式
+        # 自动重开
+        print("🔄 3秒后自动重开...")
+        time.sleep(3)
+        
+        self.api.start_game()
+        self.stats = GameStats(start_time=time.time())
+        self.current_piece_id = 0
+        self.last_piece_type = None
+        self.action_queue = []
+    
+    def _stop(self):
+        """停止 AI"""
+        print("\n\n🛑 停止 AI 控制器...")
+        
+        self.api.report_thinking(is_thinking=False)
+        
         try:
             self.api.set_mode('MANUAL')
-            print("✅ Switched back to MANUAL mode")
+            self.log("✅ 已切换回手动模式")
         except Exception as e:
-            print(f"⚠️  Failed to switch mode: {e}")
+            self.log(f"⚠️  切换模式失败: {e}", "WARN")
         
-        print("👋 Goodbye!")
+        print("👋 再见!")
 
 
 def main():
@@ -377,19 +286,18 @@ def main():
     parser.add_argument(
         '--url',
         default='http://127.0.0.1:8080/api',
-        help='API base URL (default: http://127.0.0.1:8080/api)'
+        help='API 基础 URL (默认: http://127.0.0.1:8080/api)'
     )
     parser.add_argument(
         '--test',
         action='store_true',
-        help='Run in test mode (no server required)'
+        help='测试模式'
     )
     
     args = parser.parse_args()
     
     if args.test:
-        print("Running in test mode...")
-        # 测试 A* 算法
+        print("测试模式...")
         from tetris_ai import create_initial_state
         
         board = [[0] * 10 for _ in range(20)]
@@ -398,10 +306,12 @@ def main():
         ai = AStarTetris()
         actions = ai.find_best_placement(state)
         
-        print(f"Test result: {[a.value for a in actions]}")
+        print(f"测试结果: {[a.value for a in actions]}")
+        print(f"搜索节点数: {ai.last_search_nodes}")
+        print(f"搜索时间: {ai.last_search_time*1000:.1f}ms")
+        print(f"评估分数: {ai.last_evaluation:+.2f}")
         return
     
-    # 正常运行
     controller = TetrisAIController(args.url)
     controller.run()
 
