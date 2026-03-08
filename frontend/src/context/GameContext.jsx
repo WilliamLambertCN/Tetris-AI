@@ -496,4 +496,4 @@ export function GameProvider({ children }) {
     );
 }
 
-export default GameContext;
+export default GameProvider;
