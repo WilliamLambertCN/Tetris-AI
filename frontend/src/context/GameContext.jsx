@@ -441,10 +441,15 @@ export function GameProvider({ children }) {
         drawNextPiece(ctx, nextPiece, 20);
     }, [nextPiece]);
 
-    // 当 board 或 currentPiece 变化时重绘
+    // 当 board 变化时重绘
     useEffect(() => {
         renderGame();
     }, [renderGame]);
+
+    // 当 currentPiece 变化时重绘（键盘操作后）
+    useEffect(() => {
+        renderGame();
+    }, [currentPiece, renderGame]);
 
     // 当 nextPiece 变化时重绘预览
     useEffect(() => {
@@ -596,6 +601,9 @@ export function GameProvider({ children }) {
                 lastTimeRef.current = currentTime;
             }
 
+            // 每帧都重新渲染（实现逐帧动画）
+            renderGame();
+
             animationIdRef.current = requestAnimationFrame(gameLoop);
         };
 
@@ -607,7 +615,7 @@ export function GameProvider({ children }) {
                 cancelAnimationFrame(animationIdRef.current);
             }
         };
-    }, [gameOver, paused, currentPiece, moveDown]);
+    }, [gameOver, paused, currentPiece, moveDown, renderGame]);
 
     // ========================================
     // 键盘事件处理
