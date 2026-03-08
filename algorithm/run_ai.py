@@ -294,7 +294,7 @@ class TetrisAIController:
         }
     
     def _adjust_actions(self, state: dict):
-        """根据当前方块位置动态调整动作队列"""
+        """根据当前方块位置动态调整动作队列 - 果断下落"""
         current_piece = state.get('currentPiece')
         if not current_piece or not self.action_queue:
             return
@@ -302,14 +302,13 @@ class TetrisAIController:
         # 获取当前方块状态
         current_x = current_piece.get('x', 0)
         current_y = current_piece.get('y', 0)
-        current_rotation = 0  # 简化：假设前端处理旋转状态
+        current_rotation = 0
         
         # 重建当前 AI 状态
         board = state.get('board', [])
         piece_type = current_piece.get('type')
         
         # 找到目标位置（从动作队列中提取）
-        # 找到 hard_drop 之前的目标
         target_x = current_x
         target_rotation = current_rotation
         has_hard_drop = False
@@ -338,16 +337,20 @@ class TetrisAIController:
             new_actions.append(Action.ROTATE)
             rot = (rot + 1) % 4
         
-        # 2. 水平移动到目标位置
+        # 2. 水平移动到目标位置，期间果断下落
         x = current_x
         while x < target_x:
             new_actions.append(Action.MOVE_RIGHT)
+            new_actions.append(Action.MOVE_DOWN)  # 移动后立刻下落
             x += 1
         while x > target_x:
             new_actions.append(Action.MOVE_LEFT)
+            new_actions.append(Action.MOVE_DOWN)  # 移动后立刻下落
             x -= 1
         
-        # 3. 硬降
+        # 3. 硬降前也先下落几次（如果还没到的话）
+        new_actions.append(Action.MOVE_DOWN)
+        new_actions.append(Action.MOVE_DOWN)
         new_actions.append(Action.HARD_DROP)
         
         # 更新动作队列

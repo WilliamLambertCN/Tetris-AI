@@ -272,7 +272,7 @@ class TetrisAI:
         if self.debug:
             print(f"[AI] 最佳位置: X={target_x}, Y={target_y}, 旋转={target_rotation}, 分数={best_score:.2f}")
         
-        # 生成动作序列
+        # 生成动作序列 - 果断下落策略
         actions = []
         current_x = state.piece_x
         current_rotation = state.rotation
@@ -280,17 +280,22 @@ class TetrisAI:
         # 1. 旋转到目标角度
         while current_rotation != target_rotation:
             actions.append(Action.ROTATE)
+            actions.append(Action.MOVE_DOWN)  # 旋转后果断下落
             current_rotation = (current_rotation + 1) % 4
         
-        # 2. 水平移动到目标位置
+        # 2. 水平移动到目标位置，同时果断下落
         while current_x < target_x:
             actions.append(Action.MOVE_RIGHT)
+            actions.append(Action.MOVE_DOWN)  # 移动后果断下落
             current_x += 1
         while current_x > target_x:
             actions.append(Action.MOVE_LEFT)
+            actions.append(Action.MOVE_DOWN)  # 移动后果断下落
             current_x -= 1
         
-        # 3. 硬降
+        # 3. 硬降前多下落几次
+        actions.append(Action.MOVE_DOWN)
+        actions.append(Action.MOVE_DOWN)
         actions.append(Action.HARD_DROP)
         
         self.last_evaluation = best_score
