@@ -452,6 +452,9 @@ export function GameProvider({ children }) {
             try {
                 const response = await aiApi.getActions();
                 const actions = response.data.actions || [];
+                if (actions.length > 0) {
+                    console.log('[AI] Got actions:', actions);
+                }
                 actions.forEach(({ action }) => {
                     aiActionQueueRef.current.push(action);
                 });
@@ -467,6 +470,7 @@ export function GameProvider({ children }) {
         const interval = setInterval(() => {
             while (aiActionQueueRef.current.length > 0) {
                 const action = aiActionQueueRef.current.shift();
+                console.log('[AI] Executing action:', action);
                 executeAiAction(action);
             }
         }, 50);
