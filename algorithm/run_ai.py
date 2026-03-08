@@ -141,21 +141,27 @@ class TetrisAIController:
                 time.sleep(0.05)
                 continue
             
-            # 检测新方块（通过类型变化或动作队列为空）
+            # 检测新方块
             piece_type = current_piece.get('type')
-            if piece_type != self.last_piece_type or (not self.action_queue and not self.last_piece_type):
+            piece_y = current_piece.get('y', 0)
+            
+            # 新方块检测：类型变化，或者动作队列为空且方块在顶部
+            is_new_piece = (
+                piece_type != self.last_piece_type or  # 类型变化
+                (not self.action_queue and piece_y <= 1)  # 动作完成且方块在顶部
+            )
+            
+            if is_new_piece:
                 self._handle_new_piece(state, piece_type)
             
-            # 执行动作
-            if self.action_queue:
+            # 执行动作（快速执行所有剩余动作）
+            while self.action_queue:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
             
-            # AI 模式下快速执行，减少等待
-            if not self.action_queue:
-                time.sleep(0.01)  # 10ms 轮询间隔
-            # 否则立即继续执行下一个动作
+            # 短暂休眠避免CPU占用过高
+            time.sleep(0.005)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""

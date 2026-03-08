@@ -405,15 +405,33 @@ export function GameProvider({ children }) {
     // ========================================
 
     const executeAiAction = useCallback((action) => {
-        if (!aiMode || paused || gameOver) return;
+        if (!aiMode || paused || gameOver) {
+            console.log('[AI] Action blocked:', { aiMode, paused, gameOver, action });
+            return;
+        }
+        console.log('[AI] Executing:', action);
         switch (action) {
-            case 'left': moveLeft(); break;
-            case 'right': moveRight(); break;
-            case 'rotate': rotate(); break;
-            case 'down': moveDown(); break;
+            case 'left': 
+                moveLeft(); 
+                break;
+            case 'right': 
+                moveRight(); 
+                break;
+            case 'rotate': 
+                rotate(); 
+                break;
+            case 'down': 
+                moveDown(); 
+                break;
             case 'hard_drop':
+                console.log('[AI] Hard drop starting');
                 let count = 0;
-                while (!moveDown() && count < 30) { count++; }
+                while (count < 30) {
+                    const landed = moveDown();
+                    count++;
+                    if (landed) break;
+                }
+                console.log('[AI] Hard drop complete, steps:', count);
                 break;
         }
     }, [aiMode, paused, gameOver, moveLeft, moveRight, rotate, moveDown]);
@@ -471,23 +489,20 @@ export function GameProvider({ children }) {
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
 
-    // 快速执行 AI 动作（10ms间隔，无延迟）
+    // 快速执行 AI 动作 - 使用同步循环
     useEffect(() => {
         if (!aiMode || gameOver) return;
         
-        let animationFrameId;
-        const processActions = () => {
-            // 一次执行所有动作
-            while (aiActionQueueRef.current.length > 0) {
+        const interval = setInterval(() => {
+            // 一次执行最多5个动作，避免阻塞
+            for (let i = 0; i < 5 && aiActionQueueRef.current.length > 0; i++) {
                 const action = aiActionQueueRef.current.shift();
                 executeAiAction(action);
             }
-            animationFrameId = requestAnimationFrame(processActions);
-        };
+        }, 16); // ~60fps
         
-        animationFrameId = requestAnimationFrame(processActions);
-        return () => cancelAnimationFrame(animationFrameId);
-    }, [aiMode, gameOver, executeAiAction]);
+        return () => clearInterval(interval);
+    }, [aiMode, gameOver]);
 
     // ========================================
     // AI 思考状态轮询
