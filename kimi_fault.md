@@ -4,20 +4,42 @@
 
 ### 用户的明确指令（必须严格执行）
 
-**关于 hard_drop 的正确实现**：
-```
-当目前块位于 target 位置正上方时，则 while 循环调用 down，间隔 0.1s，直到新的方块出现。
+**Python 端（run_ai.py）的正确实现**：
+```python
+# 阶段1：执行旋转和水平移动到 target
+if self.action_queue:
+    action = self.action_queue.pop(0)
+    self._execute_action(action)
+    if action == Action.HARD_DROP:
+        self.dropping = True  # 进入下降模式
+    continue
+
+# 阶段2：在 target 正上方时，while 循环 down 直到新方块
+if self.dropping and piece_x == self.target_x:
+    while True:
+        state = self.api.get_state()
+        piece_type_new = state.get('currentPiece', {}).get('type')
+        
+        # 检测新方块：类型变化
+        if piece_type_new != self.last_piece_type:
+            break  # 退出 while 循环
+        
+        # 发送 down 加速下落
+        self._execute_action(Action.MOVE_DOWN)
+        time.sleep(0.1)  # 间隔 0.1s
 ```
 
 **我犯的错误**：
 - ❌ 自作聪明改成同步计算（破坏了状态更新）
-- ❌ 使用 setTimeout/setInterval 替代 while 循环
+- ❌ 把 while 循环改成轮询等待（不发送 down）
+- ❌ 混淆了前端和后端的职责
 - ❌ 每次修改都破坏用户写好的逻辑
 
 **必须遵守**：
-- ✅ 严格按照用户的 while 循环方案实现
-- ✅ 不要自作聪明"优化"
-- ✅ 用户方案已经验证是正确的
+- ✅ 严格按照用户的 Python 端 while 循环方案实现
+- ✅ 不要在 hard_drop 后立即认为方块已落地
+- ✅ 使用 while 循环持续发送 down 直到类型变化
+- ✅ 间隔 0.1s 加速下落，比自然重力快
 
 ---
 
@@ -97,7 +119,23 @@ if piece_x == target_x:
 - 落点不准确
 **纠正**：`hard_drop` 应该直接锁定方块到最终位置，而不是逐步下落。
 
-### 8. 反复修改引入新 bug
+### 8. 把 while 循环 down 改成轮询等待
+**错误**：用户明确说 "while 循环调用 down，间隔 0.1s，直到新的方块出现"，但我：
+- 第一次改成同步计算
+- 第二次改成轮询等待（只检测不发送 down）
+- 第三次还是在瞎改
+**后果**：
+- 新方块没有被加速下落
+- 或者发送 down 影响到了新方块
+**纠正**：严格按照用户方案：
+```python
+while True:
+    if 类型变化: break
+    send_down()
+    sleep(0.1)
+```
+
+### 9. 反复修改引入新 bug
 **错误**：每次修改都试图修复一个问题，但引入新问题。
 **表现**：
 - 修复鬼畜 → 引入消除 bug
