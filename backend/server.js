@@ -1,3 +1,13 @@
+/**
+ * server.js
+ * 
+ * Express 后端服务入口
+ * 
+ * 启动方式:
+ *   node server.js           # 默认端口 8080
+ *   node server.js --port 3001  # 指定端口
+ */
+
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -6,7 +16,24 @@ import scoresRoutes from './routes/scores.js';
 import aiRoutes from './routes/ai.js';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+
+// 解析命令行参数
+function parseArgs() {
+    const args = process.argv.slice(2);
+    const parsed = {};
+    
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--port' && i + 1 < args.length) {
+            parsed.port = parseInt(args[i + 1], 10);
+            i++;
+        }
+    }
+    
+    return parsed;
+}
+
+const args = parseArgs();
+const PORT = args.port || 8080;
 
 // Middleware
 app.use(cors());
@@ -36,6 +63,8 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, '127.0.0.1', () => {
     console.log(`Backend server running on http://127.0.0.1:${PORT}`);
+    console.log(`Health check: http://127.0.0.1:${PORT}/health`);
+    console.log(`Press Ctrl+C to stop`);
 });
 
 export default app;

@@ -32,7 +32,7 @@ class TetrisAIController:
     协调 API 客户端和 A* 算法，实现自动游戏
     """
     
-    def __init__(self, api_base_url: str = "http://127.0.0.1:3001/api"):
+    def __init__(self, api_base_url: str = "http://127.0.0.1:8080/api"):
         """
         Args:
             api_base_url: API 基础 URL
@@ -255,8 +255,8 @@ def main():
     parser = argparse.ArgumentParser(description='Tetris A* AI Controller')
     parser.add_argument(
         '--url',
-        default='http://127.0.0.1:3001/api',
-        help='API base URL (default: http://127.0.0.1:3001/api)'
+        default='http://127.0.0.1:8080/api',
+        help='API base URL (default: http://127.0.0.1:8080/api)'
     )
     parser.add_argument(
         '--test',

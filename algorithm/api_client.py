@@ -17,7 +17,7 @@ class TetrisAPI:
     用于获取游戏状态、发送控制指令
     """
     
-    def __init__(self, base_url: str = "http://127.0.0.1:3001/api"):
+    def __init__(self, base_url: str = "http://127.0.0.1:8080/api"):
         """
         Args:
             base_url: API 基础 URL
