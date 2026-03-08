@@ -2,21 +2,24 @@ import { useContext } from 'react';
 import GameContext from '../../context/GameContext';
 
 export default function Board() {
-    const { boardCanvasRef, nextCanvasRef, currentPiece, score, level, renderBoard, renderNextPiece } = useContext(GameContext);
+    const {
+        boardCanvasRef,
+        nextCanvasRef,
+        score,
+        level,
+        gameOver,
+        paused,
+        startGame,
+        togglePause
+    } = useContext(GameContext);
 
-    // 强制重渲染
-    const [, setTick] = React.useState(0);
-
-    React.useEffect(() => {
-        renderBoard();
-    }, [renderBoard]);
-
-    React.useEffect(() => {
-        renderNextPiece();
-    }, [renderNextPiece, nextPiece]);
+    // 处理开始/重新开始游戏
+    const handleStartGame = () => {
+        startGame();
+    };
 
     return (
-        <div className="game-container">
+        <div className="app">
             <canvas
                 ref={boardCanvasRef}
                 id="board"
@@ -55,9 +58,14 @@ export default function Board() {
                     Space 暂停/继续
                 </div>
 
-                <button id="start-btn" onClick={handleStartGame}>
-                    {paused || gameOver ? '重新开始' : '开始游戏'}
+                <button onClick={handleStartGame}>
+                    {paused ? '继续游戏' : '开始游戏'}
                 </button>
+                {paused && (
+                    <button onClick={togglePause} style={{ marginTop: '10px' }}>
+                        继续
+                    </button>
+                )}
             </div>
         </div>
     );
