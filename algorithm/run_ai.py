@@ -35,8 +35,10 @@ class TetrisAIController:
         self.ai.debug = True  # 启用调试输出
         self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
+        self.last_piece_id: Optional[int] = None  # 用于追踪当前方块
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
+        self.processing_piece = False  # 标记是否正在处理当前方块
         
         # 配置日志级别
         self.verbose = True
@@ -144,15 +146,22 @@ class TetrisAIController:
             # 检测新方块
             piece_type = current_piece.get('type')
             piece_y = current_piece.get('y', 0)
+            piece_id = current_piece.get('x', 0) * 1000 + current_piece.get('y', 0)  # 简单的位置哈希
             
-            # 新方块检测：类型变化，或者动作队列为空且方块在顶部
+            # 新方块检测：类型变化，或者当前方块未处理且动作队列为空
+            # 添加 piece_y <= 2 是为了确保方块还在生成区域
             is_new_piece = (
                 piece_type != self.last_piece_type or  # 类型变化
-                (not self.action_queue and piece_y <= 1)  # 动作完成且方块在顶部
+                (not self.processing_piece and not self.action_queue and piece_y <= 2)  # 新方块且未处理
             )
             
             if is_new_piece:
                 self._handle_new_piece(state, piece_type)
+                self.processing_piece = True
+            
+            # 如果方块已经不在顶部区域，重置处理标记（表示已放置）
+            if piece_y > 2:
+                self.processing_piece = False
             
             # 执行动作（快速执行所有剩余动作）
             while self.action_queue:
@@ -165,9 +174,12 @@ class TetrisAIController:
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
+        # 只有真正的新方块才增加计数
+        if piece_type != self.last_piece_type:
+            self.current_piece_id += 1
+            self.stats.piece_count += 1
+        
         self.last_piece_type = piece_type
-        self.current_piece_id += 1
-        self.stats.piece_count += 1
         self.action_queue = []
         
         # 构建初始状态

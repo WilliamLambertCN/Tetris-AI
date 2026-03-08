@@ -24,22 +24,31 @@ export default function Board() {
 
     const ghostCanvasRef = useRef(null);
 
-    // 绘制 AI 目标位置预览
+    // 绘制 AI 目标位置预览 (Ghost Piece)
     useEffect(() => {
-        if (!aiMode || aiThinking.targetX === null || aiThinking.targetY === null || !currentPiece || !ghostCanvasRef.current) {
-            return;
-        }
-
         const canvas = ghostCanvasRef.current;
+        if (!canvas) return;
+        
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        // 检查是否有有效的目标位置
+        const hasValidTarget = aiThinking.targetX != null && aiThinking.targetY != null && aiThinking.targetRotation != null;
+        
+        if (!aiMode || !hasValidTarget || !currentPiece) {
+            return;
+        }
+
         const targetRotation = aiThinking.targetRotation || 0;
         const shape = getRotatedShape(currentPiece.type, targetRotation);
         if (!shape) return;
 
-        ctx.globalAlpha = 0.4;
+        // 绘制半透明填充
+        ctx.globalAlpha = 0.3;
         ctx.fillStyle = '#00ff66';
+        
+        // 绘制边框
+        ctx.globalAlpha = 0.6;
         ctx.strokeStyle = '#00ff66';
         ctx.lineWidth = 2;
         
@@ -50,12 +59,17 @@ export default function Board() {
         for (let row = 0; row < shape.length; row++) {
             for (let col = 0; col < shape[row].length; col++) {
                 if (shape[row][col]) {
+                    // 填充
+                    ctx.globalAlpha = 0.25;
+                    ctx.fillStyle = '#00ff66';
                     ctx.fillRect(
                         offsetX + col * blockSize + 1,
                         offsetY + row * blockSize + 1,
                         blockSize - 2,
                         blockSize - 2
                     );
+                    // 边框
+                    ctx.globalAlpha = 0.8;
                     ctx.strokeRect(
                         offsetX + col * blockSize + 1,
                         offsetY + row * blockSize + 1,
