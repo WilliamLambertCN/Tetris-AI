@@ -302,6 +302,44 @@ export function GameProvider({ children }) {
     }, [aiMode]);
 
     // ========================================
+    // AI 状态上报
+    // ========================================
+    
+    useEffect(() => {
+        if (!aiMode) return;
+        
+        const interval = setInterval(async () => {
+            try {
+                // 转换棋盘格式
+                const binaryBoard = board.map(row =>
+                    row.map(cell => cell ? 1 : 0)
+                );
+                
+                await aiApi.reportState({
+                    board: binaryBoard,
+                    currentPiece: currentPiece ? {
+                        type: currentPiece.type,
+                        x: currentPiece.x,
+                        y: currentPiece.y,
+                        shape: currentPiece.shape
+                    } : null,
+                    nextPiece: nextPiece ? {
+                        type: nextPiece.type,
+                        shape: nextPiece.shape
+                    } : null,
+                    score,
+                    level,
+                    gameOver
+                });
+            } catch (err) {
+                // 静默处理
+            }
+        }, 50); // 50ms 上报一次
+        
+        return () => clearInterval(interval);
+    }, [aiMode, board, currentPiece, nextPiece, score, level, gameOver]);
+
+    // ========================================
     // 方块移动函数
     // ========================================
 

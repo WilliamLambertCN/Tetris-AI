@@ -109,9 +109,22 @@ class TetrisAIController:
     
     def _main_loop(self):
         """主游戏循环"""
+        debug_counter = 0
+        
         while True:
             # 获取游戏状态
             state = self.api.get_state()
+            
+            # 调试输出（每50次循环输出一次）
+            debug_counter += 1
+            if debug_counter % 50 == 0:
+                if state:
+                    piece = state.get('currentPiece')
+                    game_over = state.get('gameOver', False)
+                    self.log(f"DEBUG - gameOver: {game_over}, piece: {piece.get('type') if piece else None}", "DEBUG")
+                else:
+                    self.log("DEBUG - No state received", "DEBUG")
+            
             if not state:
                 time.sleep(0.05)
                 continue
@@ -127,9 +140,9 @@ class TetrisAIController:
                 time.sleep(0.05)
                 continue
             
-            # 检测新方块
+            # 检测新方块（通过类型变化或动作队列为空）
             piece_type = current_piece.get('type')
-            if piece_type != self.last_piece_type:
+            if piece_type != self.last_piece_type or (not self.action_queue and not self.last_piece_type):
                 self._handle_new_piece(state, piece_type)
             
             # 执行动作
