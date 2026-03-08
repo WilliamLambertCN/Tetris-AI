@@ -133,3 +133,28 @@ button:hover {
 .shake {
     animation: shake 0.3s ease;
 }
+
+/* AI 控制面板样式 */
+.ai-panel {
+    border: 2px solid #00ff66;
+    background: rgba(0, 255, 102, 0.1);
+}
+
+.ai-panel h3 {
+    color: #00ff66;
+    margin-bottom: 10px;
+}
+
+.ai-status {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #ccc;
+}
+
+button.ai-active {
+    background: linear-gradient(135deg, #00ff66 0%, #00cc52 100%);
+}
+
+button.ai-active:hover {
+    box-shadow: 0 4px 15px rgba(0, 255, 102, 0.4);
+}

@@ -10,6 +10,7 @@
  *   - 下一个方块预览
  *   - 操作说明
  *   - 开始/暂停按钮
+ *   - AI 控制面板
  * 
  * @usage
  *   被 App.jsx 使用，需要在 GameProvider 内部：
@@ -33,17 +34,21 @@ export default function Board() {
      * level: 当前等级
      * gameOver: 游戏是否结束
      * paused: 游戏是否暂停
+     * aiMode: 是否启用 AI 控制
      * startGame: 开始/重新开始游戏的方法
      * togglePause: 暂停/继续游戏的方法
+     * toggleAiMode: 切换 AI 模式的方法
      */
     const {
-        boardCanvasRef,    // 主棋盘 Canvas ref
-        nextCanvasRef,     // 预览 Canvas ref
-        score,             // 当前分数
-        level,             // 当前等级
-        paused,            // 暂停状态
-        startGame,         // 开始游戏方法
-        togglePause        // 暂停切换方法
+        boardCanvasRef,
+        nextCanvasRef,
+        score,
+        level,
+        paused,
+        aiMode,
+        startGame,
+        togglePause,
+        toggleAiMode
     } = useContext(GameContext);
 
     /**
@@ -52,6 +57,13 @@ export default function Board() {
      */
     const handleStartGame = () => {
         startGame();
+    };
+
+    /**
+     * 处理 AI 模式切换
+     */
+    const handleToggleAi = () => {
+        toggleAiMode();
     };
 
     return (
@@ -104,6 +116,20 @@ export default function Board() {
                     ↑ 旋转<br />
                     ↓ 加速下落<br />
                     Space 暂停/继续
+                </div>
+
+                {/* AI 控制面板 */}
+                <div className="info-box ai-panel">
+                    <h3>🤖 AI 控制</h3>
+                    <div className="ai-status">
+                        状态: {aiMode ? '🟢 运行中' : '⚪ 已关闭'}
+                    </div>
+                    <button 
+                        onClick={handleToggleAi}
+                        className={aiMode ? 'ai-active' : ''}
+                    >
+                        {aiMode ? '关闭 AI' : '启用 AI'}
+                    </button>
                 </div>
 
                 {/* 开始游戏按钮 */}

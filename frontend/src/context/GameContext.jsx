@@ -20,6 +20,7 @@
 
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as CONSTANTS from '../utils/constants';
+import { aiApi } from '../services/aiApi';
 
 // ============================================
 // 游戏常量定义
@@ -416,6 +417,8 @@ export function GameProvider({ children }) {
     const [level, setLevel] = useState(1);                   // 等级
     const [gameOver, setGameOver] = useState(false);         // 游戏结束标志
     const [paused, setPaused] = useState(false);             // 暂停标志
+    const [aiMode, setAiMode] = useState(false);             // AI 控制模式
+    const [aiStatus, setAiStatus] = useState('idle');        // AI 状态
 
     // 同步 currentPiece 到 ref（用于游戏循环中实时访问）
     useEffect(() => {
@@ -496,6 +499,83 @@ export function GameProvider({ children }) {
             return newPaused;
         });
     }, [gameOver]);
+
+    // ========================================
+    // AI 控制函数
+    // ========================================
+
+    /**
+     * 切换 AI 模式
+     */
+    const toggleAiMode = useCallback(async () => {
+        const newMode = !aiMode;
+        setAiMode(newMode);
+        try {
+            await aiApi.setMode(newMode ? 'AI' : 'MANUAL');
+        } catch (err) {
+            console.error('Failed to switch AI mode:', err);
+        }
+    }, [aiMode]);
+
+    /**
+     * 上报游戏状态到 AI 接口
+     */
+    const reportGameState = useCallback(async () => {
+        if (!aiMode || !currentPiece) return;
+        
+        try {
+            // 转换棋盘格式：颜色字符串转为 0/1
+            const binaryBoard = board.map(row =>
+                row.map(cell => cell ? 1 : 0)
+            );
+            
+            await aiApi.reportState({
+                board: binaryBoard,
+                currentPiece: currentPiece ? {
+                    type: currentPiece.type,
+                    x: currentPiece.x,
+                    y: currentPiece.y,
+                    rotation: 0, // 可以通过计算 shape 得到
+                    shape: currentPiece.shape
+                } : null,
+                nextPiece: nextPiece ? {
+                    type: nextPiece.type,
+                    shape: nextPiece.shape
+                } : null,
+                score,
+                level,
+                gameOver
+            });
+        } catch (err) {
+            console.error('Failed to report state:', err);
+        }
+    }, [aiMode, board, currentPiece, nextPiece, score, level, gameOver]);
+
+    /**
+     * 执行 AI 动作
+     */
+    const executeAiAction = useCallback((action) => {
+        if (!aiMode || paused || gameOver) return;
+        
+        switch (action) {
+            case 'left':
+                moveLeft();
+                break;
+            case 'right':
+                moveRight();
+                break;
+            case 'rotate':
+                rotate();
+                break;
+            case 'down':
+                moveDown();
+                break;
+            case 'hard_drop':
+                // 硬降：一直下落到碰撞
+                while (!moveDown()) {}
+                break;
+        }
+    }, [aiMode, paused, gameOver, moveLeft, moveRight, rotate, moveDown]);
 
     // ========================================
     // 方块移动函数
@@ -618,6 +698,45 @@ export function GameProvider({ children }) {
     }, [gameOver, paused, currentPiece, moveDown, renderGame]);
 
     // ========================================
+    // AI 状态上报
+    // ========================================
+    
+    useEffect(() => {
+        if (!aiMode || !currentPiece) return;
+        
+        // 定期上报状态
+        const interval = setInterval(() => {
+            reportGameState();
+        }, 100);
+        
+        return () => clearInterval(interval);
+    }, [aiMode, currentPiece, reportGameState]);
+
+    // ========================================
+    // AI 动作轮询
+    // ========================================
+    
+    useEffect(() => {
+        if (!aiMode || gameOver) return;
+        
+        // 定期获取 AI 动作
+        const interval = setInterval(async () => {
+            try {
+                const response = await aiApi.getActions();
+                const actions = response.data.actions || [];
+                
+                actions.forEach(({ action }) => {
+                    executeAiAction(action);
+                });
+            } catch (err) {
+                console.error('Failed to get AI actions:', err);
+            }
+        }, 50); // 50ms 轮询一次
+        
+        return () => clearInterval(interval);
+    }, [aiMode, gameOver, executeAiAction]);
+
+    // ========================================
     // 键盘事件处理
     // ========================================
     
@@ -664,6 +783,8 @@ export function GameProvider({ children }) {
         level,
         gameOver,
         paused,
+        aiMode,
+        aiStatus,
         // Refs（用于 Canvas 绑定）
         boardCanvasRef,
         nextCanvasRef,
@@ -671,7 +792,9 @@ export function GameProvider({ children }) {
         startGame,
         togglePause,
         renderGame,
-        renderNextPiece
+        renderNextPiece,
+        toggleAiMode,
+        executeAiAction
     };
 
     return (
