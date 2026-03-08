@@ -1,11 +1,12 @@
 """
-tetris_ai.py - A* 算法实现的俄罗斯方块 AI
+tetris_ai.py - 俄罗斯方块 AI（简化版）
+
+不使用 A*，而是直接枚举所有可能的放置位置，选择最优的
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Set
+from typing import List, Optional
 from enum import Enum
-from queue import PriorityQueue
 import copy
 import time
 
@@ -81,17 +82,6 @@ class Action(Enum):
     ROTATE = "rotate"
     MOVE_DOWN = "down"
     HARD_DROP = "hard_drop"
-    NO_OP = "noop"
-
-
-ACTION_COST = {
-    Action.MOVE_LEFT: 1,
-    Action.MOVE_RIGHT: 1,
-    Action.ROTATE: 1,
-    Action.MOVE_DOWN: 0.5,
-    Action.HARD_DROP: 0,
-    Action.NO_OP: 0.1
-}
 
 
 @dataclass
@@ -102,32 +92,6 @@ class TetrisState:
     piece_x: int
     piece_y: int
     rotation: int
-    g_cost: float = 0
-    h_cost: float = 0
-    f_cost: float = 0
-    parent: Optional['TetrisState'] = None
-    action: Optional[Action] = None
-    
-    def __lt__(self, other):
-        return self.f_cost < other.f_cost
-    
-    def copy(self):
-        return TetrisState(
-            board=copy.deepcopy(self.board),
-            piece_type=self.piece_type,
-            piece_x=self.piece_x,
-            piece_y=self.piece_y,
-            rotation=self.rotation,
-            g_cost=self.g_cost,
-            h_cost=self.h_cost,
-            f_cost=self.f_cost,
-            parent=self.parent,
-            action=self.action
-        )
-    
-    def get_state_key(self) -> str:
-        """状态唯一键"""
-        return f"{self.piece_x},{self.piece_y},{self.rotation}"
 
 
 def get_column_heights(board: List[List[int]]) -> List[int]:
@@ -164,7 +128,7 @@ def get_bumpiness(heights: List[int]) -> int:
     return bumpiness
 
 
-def evaluate_board(board: List[List[int]], lines_cleared: int = 0) -> float:
+def evaluate_board(board: List[List[int]]) -> float:
     """评估棋盘状态（越高越好）"""
     heights = get_column_heights(board)
     aggregate_height = sum(heights)
@@ -185,8 +149,40 @@ def evaluate_board(board: List[List[int]], lines_cleared: int = 0) -> float:
     return score
 
 
-def simulate_place_piece(board: List[List[int]], piece_type: str, x: int, y: int, rotation: int) -> Optional[List[List[int]]]:
-    """模拟放置方块"""
+def check_collision(board: List[List[int]], piece_type: str, x: int, y: int, rotation: int) -> bool:
+    """检查碰撞"""
+    shape = SHAPES[piece_type]['rotations'][rotation]
+    
+    for row in range(len(shape)):
+        for col in range(len(shape[row])):
+            if shape[row][col]:
+                new_x = x + col
+                new_y = y + row
+                
+                if new_x < 0 or new_x >= BOARD_WIDTH or new_y >= BOARD_HEIGHT:
+                    return True
+                
+                if new_y >= 0 and board[new_y][new_x]:
+                    return True
+    
+    return False
+
+
+def find_drop_position(board: List[List[int]], piece_type: str, x: int, start_y: int, rotation: int) -> int:
+    """找到方块下落后的 Y 位置"""
+    y = start_y
+    while y < BOARD_HEIGHT:
+        if check_collision(board, piece_type, x, y + 1, rotation):
+            return y
+        y += 1
+    return BOARD_HEIGHT - 1
+
+
+def simulate_place(board: List[List[int]], piece_type: str, x: int, y: int, rotation: int) -> Optional[List[List[int]]]:
+    """模拟放置方块，返回新棋盘"""
+    if check_collision(board, piece_type, x, y, rotation):
+        return None
+    
     new_board = copy.deepcopy(board)
     shape = SHAPES[piece_type]['rotations'][rotation]
     
@@ -195,226 +191,101 @@ def simulate_place_piece(board: List[List[int]], piece_type: str, x: int, y: int
             if shape[row][col]:
                 board_x = x + col
                 board_y = y + row
-                
-                if board_x < 0 or board_x >= BOARD_WIDTH or board_y >= BOARD_HEIGHT:
-                    return None
-                
-                if board_y >= 0 and new_board[board_y][board_x]:
-                    return None
-    
-    for row in range(len(shape)):
-        for col in range(len(shape[row])):
-            if shape[row][col]:
-                board_x = x + col
-                board_y = y + row
-                if board_y >= 0:
+                if 0 <= board_x < BOARD_WIDTH and 0 <= board_y < BOARD_HEIGHT:
                     new_board[board_y][board_x] = 1
     
     return new_board
 
 
-class AStarTetris:
-    """A* 算法实现"""
+def clear_lines(board: List[List[int]]) -> List[List[int]]:
+    """消除满行"""
+    new_board = [row for row in board if not all(row)]
+    while len(new_board) < BOARD_HEIGHT:
+        new_board.insert(0, [0] * BOARD_WIDTH)
+    return new_board
+
+
+class TetrisAI:
+    """俄罗斯方块 AI - 直接枚举所有可能位置"""
     
-    def __init__(self, max_search_time: float = 0.5):
-        self.max_search_time = max_search_time
-        self.node_count = 0
+    def __init__(self):
         self.last_search_nodes = 0
         self.last_search_time = 0
         self.last_evaluation = 0
         self.debug = False
     
-    def check_collision(self, state: TetrisState) -> bool:
-        """检查碰撞"""
-        shape = SHAPES[state.piece_type]['rotations'][state.rotation]
-        
-        for row in range(len(shape)):
-            for col in range(len(shape[row])):
-                if shape[row][col]:
-                    new_x = state.piece_x + col
-                    new_y = state.piece_y + row
-                    
-                    if new_x < 0 or new_x >= BOARD_WIDTH or new_y >= BOARD_HEIGHT:
-                        return True
-                    
-                    if new_y >= 0 and state.board[new_y][new_x]:
-                        return True
-        
-        return False
-    
-    def is_goal_state(self, state: TetrisState) -> bool:
-        """检查是否已落地（不能再下移）"""
-        test_state = state.copy()
-        test_state.piece_y += 1
-        return self.check_collision(test_state)
-    
-    def get_possible_actions(self, state: TetrisState) -> List[Action]:
-        """获取可能的动作"""
-        actions = []
-        
-        # 左移
-        test_left = state.copy()
-        test_left.piece_x -= 1
-        if not self.check_collision(test_left):
-            actions.append(Action.MOVE_LEFT)
-        
-        # 右移
-        test_right = state.copy()
-        test_right.piece_x += 1
-        if not self.check_collision(test_right):
-            actions.append(Action.MOVE_RIGHT)
-        
-        # 旋转
-        test_rotate = state.copy()
-        test_rotate.rotation = (test_rotate.rotation + 1) % 4
-        if not self.check_collision(test_rotate):
-            actions.append(Action.ROTATE)
-        
-        # 下移
-        test_down = state.copy()
-        test_down.piece_y += 1
-        if not self.check_collision(test_down):
-            actions.append(Action.MOVE_DOWN)
-        
-        return actions
-    
-    def apply_action(self, state: TetrisState, action: Action) -> Optional[TetrisState]:
-        """应用动作"""
-        new_state = state.copy()
-        
-        if action == Action.MOVE_LEFT:
-            new_state.piece_x -= 1
-        elif action == Action.MOVE_RIGHT:
-            new_state.piece_x += 1
-        elif action == Action.ROTATE:
-            new_state.rotation = (new_state.rotation + 1) % 4
-        elif action == Action.MOVE_DOWN:
-            new_state.piece_y += 1
-        
-        if self.check_collision(new_state):
-            return None
-        
-        return new_state
-    
-    def reconstruct_path(self, goal_state: TetrisState) -> List[Action]:
-        """重构路径"""
-        actions = []
-        current = goal_state
-        
-        while current.parent is not None and current.action is not None:
-            actions.append(current.action)
-            current = current.parent
-        
-        return list(reversed(actions))
-    
-    def find_best_placement(self, initial_state: TetrisState) -> List[Action]:
-        """A* 搜索最佳放置位置"""
+    def find_best_placement(self, state: TetrisState) -> List[Action]:
+        """
+        找到最佳放置位置
+        遍历所有可能的 x 位置和旋转角度
+        """
         start_time = time.time()
-        self.node_count = 0
         
-        # 检查初始状态
-        if self.check_collision(initial_state):
-            if self.debug:
-                print(f"[A*] 初始状态碰撞，方块: {initial_state.piece_type} at ({initial_state.piece_x}, {initial_state.piece_y})")
-            return []
+        best_score = float('-inf')
+        best_placement = None  # (x, rotation, drop_y)
         
-        open_list = PriorityQueue()
-        closed_set: Set[str] = set()
-        
-        best_goal_state = None
-        best_goal_score = float('-inf')
-        
-        # 初始化
-        initial_state.g_cost = 0
-        initial_state.h_cost = 0
-        initial_state.f_cost = 0
-        initial_state.parent = None
-        initial_state.action = None
-        
-        counter = 0
-        open_list.put((initial_state.f_cost, counter, initial_state))
-        counter += 1
-        
-        if self.debug:
-            print(f"[A*] 开始搜索，方块: {initial_state.piece_type}, 位置: ({initial_state.piece_x}, {initial_state.piece_y})")
-        
-        while not open_list.empty():
-            if time.time() - start_time > self.max_search_time:
-                if self.debug:
-                    print(f"[A*] 搜索超时")
-                break
+        # 遍历所有旋转角度
+        for rotation in range(4):
+            # 获取方块宽度
+            shape = SHAPES[state.piece_type]['rotations'][rotation]
+            piece_width = len(shape[0])
             
-            _, _, current = open_list.get()
-            self.node_count += 1
-            
-            # 检查是否目标状态（已落地）
-            if self.is_goal_state(current):
-                # 评估这个位置
-                final_board = simulate_place_piece(
-                    current.board, 
-                    current.piece_type, 
-                    current.piece_x, 
-                    current.piece_y, 
-                    current.rotation
-                )
-                if final_board:
-                    score = evaluate_board(final_board)
-                    if score > best_goal_score:
-                        best_goal_score = score
-                        best_goal_state = current
-                        if self.debug:
-                            print(f"[A*] 找到落点: ({current.piece_x}, {current.piece_y}), 分数: {score:.2f}")
-                continue
-            
-            # 添加到已探索
-            closed_set.add(current.get_state_key())
-            
-            # 生成子状态
-            for action in self.get_possible_actions(current):
-                child = self.apply_action(current, action)
-                if child is None:
+            # 遍历所有可能的 x 位置
+            for x in range(BOARD_WIDTH - piece_width + 1):
+                # 找到下落位置
+                drop_y = find_drop_position(state.board, state.piece_type, x, state.piece_y, rotation)
+                
+                # 模拟放置
+                new_board = simulate_place(state.board, state.piece_type, x, drop_y, rotation)
+                if new_board is None:
                     continue
                 
-                child_key = child.get_state_key()
-                if child_key in closed_set:
-                    continue
+                # 消除满行
+                final_board = clear_lines(new_board)
                 
-                child.g_cost = current.g_cost + ACTION_COST[action]
-                child.h_cost = 0
-                child.f_cost = child.g_cost + child.h_cost
-                child.parent = current
-                child.action = action
+                # 评估
+                score = evaluate_board(final_board)
                 
-                open_list.put((child.f_cost, counter, child))
-                counter += 1
+                if score > best_score:
+                    best_score = score
+                    best_placement = (x, rotation, drop_y)
         
-        self.last_search_nodes = self.node_count
         self.last_search_time = time.time() - start_time
         
-        if best_goal_state:
-            path = self.reconstruct_path(best_goal_state)
-            path.append(Action.HARD_DROP)
-            
-            # 计算最终评估
-            final_board = simulate_place_piece(
-                best_goal_state.board,
-                best_goal_state.piece_type,
-                best_goal_state.piece_x,
-                best_goal_state.piece_y,
-                best_goal_state.rotation
-            )
-            if final_board:
-                self.last_evaluation = evaluate_board(final_board)
-            
+        if best_placement is None:
             if self.debug:
-                print(f"[A*] 搜索完成，路径长度: {len(path)}, 节点数: {self.node_count}, 耗时: {self.last_search_time*1000:.1f}ms")
-            
-            return path
+                print(f"[AI] 未找到有效放置位置")
+            return []
+        
+        target_x, target_rotation, target_y = best_placement
         
         if self.debug:
-            print(f"[A*] 未找到落点，节点数: {self.node_count}")
+            print(f"[AI] 最佳位置: X={target_x}, Y={target_y}, 旋转={target_rotation}, 分数={best_score:.2f}")
         
-        return []
+        # 生成动作序列
+        actions = []
+        current_x = state.piece_x
+        current_rotation = state.rotation
+        
+        # 1. 旋转到目标角度
+        while current_rotation != target_rotation:
+            actions.append(Action.ROTATE)
+            current_rotation = (current_rotation + 1) % 4
+        
+        # 2. 水平移动到目标位置
+        while current_x < target_x:
+            actions.append(Action.MOVE_RIGHT)
+            current_x += 1
+        while current_x > target_x:
+            actions.append(Action.MOVE_LEFT)
+            current_x -= 1
+        
+        # 3. 硬降
+        actions.append(Action.HARD_DROP)
+        
+        self.last_evaluation = best_score
+        
+        return actions
 
 
 def create_initial_state(board: List[List[int]], piece_type: str, piece_x: int, piece_y: int) -> TetrisState:
@@ -428,13 +299,17 @@ def create_initial_state(board: List[List[int]], piece_type: str, piece_x: int, 
     )
 
 
+# 兼容旧接口
+AStarTetris = TetrisAI
+
+
 if __name__ == '__main__':
     # 测试
     board = [[0] * 10 for _ in range(20)]
     state = create_initial_state(board, 'T', 4, 0)
     
-    ai = AStarTetris(max_search_time=0.5)
+    ai = TetrisAI()
     ai.debug = True
     actions = ai.find_best_placement(state)
     
-    print(f"Best actions: {[a.value for a in actions]}")
+    print(f"动作序列: {[a.value for a in actions]}")

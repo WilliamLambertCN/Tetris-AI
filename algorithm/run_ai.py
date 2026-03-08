@@ -8,7 +8,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from api_client import TetrisAPI
-from tetris_ai import AStarTetris, TetrisState, Action, create_initial_state, simulate_place_piece, evaluate_board, get_column_heights
+from tetris_ai import TetrisAI, TetrisState, Action, create_initial_state
 
 
 @dataclass
@@ -31,7 +31,7 @@ class TetrisAIController:
     
     def __init__(self, api_base_url: str = "http://127.0.0.1:8080/api"):
         self.api = TetrisAPI(api_base_url)
-        self.ai = AStarTetris(max_search_time=0.5)  # 搜索时间
+        self.ai = TetrisAI()  # 使用简化版 AI
         self.ai.debug = True  # 启用调试输出
         self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
@@ -195,7 +195,7 @@ class TetrisAIController:
                 target_pos=target_pos,
                 evaluation=self.ai.last_evaluation,
                 search_time=search_time,
-                nodes=self.ai.last_search_nodes
+                nodes=0
             )
             
             # 上报思考状态
@@ -206,7 +206,7 @@ class TetrisAIController:
                 target_y=target_pos['y'],
                 target_rotation=target_pos['rotation'],
                 planned_actions=[a.value for a in actions],
-                search_nodes=self.ai.last_search_nodes,
+                search_nodes=0,
                 search_time=search_time * 1000,
                 evaluation_score=self.ai.last_evaluation
             )
@@ -328,7 +328,7 @@ def main():
         actions = ai.find_best_placement(state)
         
         print(f"测试结果: {[a.value for a in actions]}")
-        print(f"搜索节点数: {ai.last_search_nodes}")
+        print(f"搜索时间: {ai.last_search_time*1000:.1f}ms")
         print(f"搜索时间: {ai.last_search_time*1000:.1f}ms")
         print(f"评估分数: {ai.last_evaluation:+.2f}")
         return
