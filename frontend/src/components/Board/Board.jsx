@@ -17,7 +17,7 @@
  */
 
 import { useContext } from 'react';
-import GameContext from '../../context/GameContext';
+import { GameContext } from '../../context/GameContext';
 
 /**
  * Board 组件

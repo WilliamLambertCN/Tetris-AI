@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GameContext.jsx
  * 
  * 游戏全局状态管理
@@ -673,5 +673,5 @@ export function GameProvider({ children }) {
     );
 }
 
-// 默认导出 Context（方便直接 import GameContext）
-export default GameContext;
+// 默认导出 GameProvider
+export default GameProvider;
