@@ -211,7 +211,6 @@ export function GameProvider({ children }) {
     const lastTimeRef = useRef(0);
     const currentPieceRef = useRef(null);
     const aiActionQueueRef = useRef([]);
-    const aiTargetYRef = useRef(null);
 
     const initBoard = useCallback(() => {
         return Array.from({ length: CONSTANTS.ROWS }, () => Array(CONSTANTS.COLS).fill(null));
@@ -425,49 +424,8 @@ export function GameProvider({ children }) {
                 moveDown(); 
                 break;
             case 'hard_drop': {
-                const targetY = aiTargetYRef.current;
-                console.log('[AI] Hard drop starting, current Y:', currentPieceRef.current?.y, 'target Y:', targetY);
-                const piece = currentPieceRef.current;
-                const currentBoard = board;
-                
-                // 如果有目标 Y 且当前位置低于目标，尝试直接落到目标 Y
-                if (piece && targetY !== null && targetY > piece.y) {
-                    // 检查从当前 Y 到目标 Y 的路径是否畅通
-                    let canTeleport = true;
-                    for (let testY = piece.y + 1; testY <= targetY; testY++) {
-                        if (collide(piece.shape, piece.x, testY, currentBoard)) {
-                            canTeleport = false;
-                            break;
-                        }
-                    }
-                    if (canTeleport) {
-                        console.log('[AI] Teleporting to target Y:', targetY);
-                        // 直接设置到目标 Y 并锁定
-                        const pieceAtTarget = { ...piece, y: targetY };
-                        setCurrentPiece(pieceAtTarget);
-                        const lockedBoard = lockPiece(currentBoard, pieceAtTarget);
-                        const { newBoard, linesCleared } = checkLines(lockedBoard);
-                        setBoard(newBoard);
-                        if (linesCleared > 0) {
-                            const points = [0, 100, 300, 500, 800];
-                            const newScore = score + points[linesCleared] * level;
-                            setScore(newScore);
-                            const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
-                            if (newLevel > level) {
-                                setLevel(newLevel);
-                            }
-                        }
-                        const result = spawnPiece(nextPiece);
-                        setNextPiece(result.nextPiece);
-                        setCurrentPiece(result.currentPiece);
-                        if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
-                            setGameOver(true);
-                        }
-                        aiTargetYRef.current = null; // 重置目标 Y
-                        break;
-                    }
-                }
-                // 否则使用普通下落
+                // AI 像人类一样按空格硬降，自然下落直到触底
+                console.log('[AI] Hard drop starting, current Y:', currentPieceRef.current?.y);
                 let count = 0;
                 while (count < 30) {
                     const landed = moveDown();
@@ -475,7 +433,6 @@ export function GameProvider({ children }) {
                     if (landed) break;
                 }
                 console.log('[AI] Hard drop complete, steps:', count);
-                aiTargetYRef.current = null; // 重置目标 Y
                 break;
             }
         }
@@ -534,17 +491,17 @@ export function GameProvider({ children }) {
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
 
-    // 快速执行 AI 动作 - 使用同步循环，尽可能快地执行
+    // 快速执行 AI 动作 - 高频执行
     useEffect(() => {
         if (!aiMode || gameOver) return;
         
         const interval = setInterval(() => {
-            // 快速执行所有动作，在重力影响下尽快完成
-            while (aiActionQueueRef.current.length > 0) {
+            // 每次执行一个动作，保持与 AI 同步
+            if (aiActionQueueRef.current.length > 0) {
                 const action = aiActionQueueRef.current.shift();
                 executeAiAction(action);
             }
-        }, 5); // 每 5ms 检查一次，约 200fps 的响应速度
+        }, 10); // 每 10ms 执行一个动作，约 100fps
         
         return () => clearInterval(interval);
     }, [aiMode, gameOver]);
@@ -559,10 +516,6 @@ export function GameProvider({ children }) {
             try {
                 const response = await aiApi.getThinking();
                 const thinking = response.data;
-                // 更新 ref 以便 hard_drop 使用
-                if (thinking.targetY !== null && thinking.targetY !== undefined) {
-                    aiTargetYRef.current = thinking.targetY;
-                }
                 setAiThinking({
                     isThinking: thinking.isThinking || false,
                     targetX: thinking.targetX,

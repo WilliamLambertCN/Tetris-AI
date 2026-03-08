@@ -111,25 +111,23 @@ class TetrisAIController:
             self._stop()
     
     def _main_loop(self):
-        """主游戏循环"""
+        """主游戏循环 - 动态规划：根据实时位置调整动作"""
         debug_counter = 0
         
         while True:
             # 获取游戏状态
             state = self.api.get_state()
             
-            # 调试输出（每50次循环输出一次）
+            # 调试输出（每100次循环输出一次）
             debug_counter += 1
-            if debug_counter % 50 == 0:
+            if debug_counter % 100 == 0:
                 if state:
                     piece = state.get('currentPiece')
                     game_over = state.get('gameOver', False)
-                    self.log(f"DEBUG - gameOver: {game_over}, piece: {piece.get('type') if piece else None}", "DEBUG")
-                else:
-                    self.log("DEBUG - No state received", "DEBUG")
+                    self.log(f"DEBUG - gameOver: {game_over}, piece: {piece.get('type') if piece else None}, queue: {len(self.action_queue)}", "DEBUG")
             
             if not state:
-                time.sleep(0.02)
+                time.sleep(0.01)
                 continue
             
             # 检查游戏结束
@@ -140,16 +138,14 @@ class TetrisAIController:
             # 检查当前方块
             current_piece = state.get('currentPiece')
             if not current_piece:
-                time.sleep(0.02)
+                time.sleep(0.01)
                 continue
             
             # 检测新方块
             piece_type = current_piece.get('type')
             piece_y = current_piece.get('y', 0)
-            piece_id = current_piece.get('x', 0) * 1000 + current_piece.get('y', 0)  # 简单的位置哈希
             
-            # 新方块检测：类型变化，或者当前方块未处理且动作队列为空
-            # 添加 piece_y <= 2 是为了确保方块还在生成区域
+            # 新方块检测：类型变化，或者当前方块未处理且动作队列为空且方块在顶部
             is_new_piece = (
                 piece_type != self.last_piece_type or  # 类型变化
                 (not self.processing_piece and not self.action_queue and piece_y <= 2)  # 新方块且未处理
@@ -160,17 +156,21 @@ class TetrisAIController:
                 self.processing_piece = True
             
             # 如果方块已经不在顶部区域，重置处理标记（表示已放置）
-            if piece_y > 2:
+            if piece_y > 3:
                 self.processing_piece = False
             
-            # 执行动作（快速执行所有剩余动作）
-            while self.action_queue:
+            # 动态调整：如果动作队列不为空，根据当前位置重新计算路径
+            if self.action_queue:
+                self._adjust_actions(state)
+            
+            # 执行动作（每次只执行一个，保持响应性）
+            if self.action_queue:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
             
             # 短暂休眠，保持高频轮询
-            time.sleep(0.003)
+            time.sleep(0.005)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
@@ -292,6 +292,66 @@ class TetrisAIController:
             "y": state.piece_y,
             "rotation": state.rotation
         }
+    
+    def _adjust_actions(self, state: dict):
+        """根据当前方块位置动态调整动作队列"""
+        current_piece = state.get('currentPiece')
+        if not current_piece or not self.action_queue:
+            return
+        
+        # 获取当前方块状态
+        current_x = current_piece.get('x', 0)
+        current_y = current_piece.get('y', 0)
+        current_rotation = 0  # 简化：假设前端处理旋转状态
+        
+        # 重建当前 AI 状态
+        board = state.get('board', [])
+        piece_type = current_piece.get('type')
+        
+        # 找到目标位置（从动作队列中提取）
+        # 找到 hard_drop 之前的目标
+        target_x = current_x
+        target_rotation = current_rotation
+        has_hard_drop = False
+        
+        for action in self.action_queue:
+            if action == Action.HARD_DROP:
+                has_hard_drop = True
+                break
+            elif action == Action.MOVE_LEFT:
+                target_x -= 1
+            elif action == Action.MOVE_RIGHT:
+                target_x += 1
+            elif action == Action.ROTATE:
+                target_rotation = (target_rotation + 1) % 4
+        
+        # 如果已经有 hard_drop，不需要调整
+        if not has_hard_drop:
+            return
+        
+        # 重新生成从当前位置到目标的动作序列
+        new_actions = []
+        
+        # 1. 旋转到目标角度
+        rot = current_rotation
+        while rot != target_rotation:
+            new_actions.append(Action.ROTATE)
+            rot = (rot + 1) % 4
+        
+        # 2. 水平移动到目标位置
+        x = current_x
+        while x < target_x:
+            new_actions.append(Action.MOVE_RIGHT)
+            x += 1
+        while x > target_x:
+            new_actions.append(Action.MOVE_LEFT)
+            x -= 1
+        
+        # 3. 硬降
+        new_actions.append(Action.HARD_DROP)
+        
+        # 更新动作队列
+        self.action_queue = new_actions
     
     def _execute_action(self, action: Action):
         """执行动作"""
