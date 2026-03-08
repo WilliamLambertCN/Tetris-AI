@@ -38,7 +38,7 @@ class TetrisAIController:
         self.last_piece_y: int = -1  # 上次方块的Y位置
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
-        self.fast_dropping = False  # 是否处于快速下降模式
+        self.dropping = False  # 是否处于快速下降模式
         
         # 配置日志级别
         self.verbose = True
@@ -111,7 +111,7 @@ class TetrisAIController:
             self._stop()
     
     def _main_loop(self):
-        """主游戏循环 - 简化逻辑，每个方块只处理一次"""
+        """主游戏循环 - 当方块在target正上方时，while循环down直到新方块"""
         
         while True:
             # 获取游戏状态
@@ -137,10 +137,10 @@ class TetrisAIController:
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 检测新方块：类型变化，或(快速下降模式下方块回到顶部)
+            # 检测新方块：类型变化，或(正在下降模式下方块从高处回到顶部)
             is_new_piece = (
                 piece_type != self.last_piece_type or 
-                (self.fast_dropping and piece_y <= 1 and self.last_piece_y > 10)
+                (self.dropping and piece_y <= 1 and self.last_piece_y > 10)
             )
             
             if is_new_piece:
@@ -149,44 +149,63 @@ class TetrisAIController:
             # 更新上次Y位置
             self.last_piece_y = piece_y
             
-            # 执行动作队列
+            # 阶段1：执行动作队列（旋转和水平移动）
             if self.action_queue:
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
                 
-                # 如果执行了 hard_drop，切换到快速下降模式
+                # hard_drop后，进入阶段2
                 if action == Action.HARD_DROP:
-                    self.fast_dropping = True
-                    self.log(f"执行硬降，开始快速下降")
+                    self.dropping = True
+                    self.log(f"执行硬降，开始在目标位置快速下降")
                 
                 time.sleep(0.01)
-            elif self.fast_dropping:
-                # 快速下降模式：持续 down 直到新方块
-                if piece_y <= 2 and self.last_piece_y > 10:
-                    # 新方块已经出现
-                    self.fast_dropping = False
-                else:
-                    # 还在下落，持续 down
+                continue
+            
+            # 阶段2：如果在target正上方且正在下降模式，while循环down
+            if self.dropping and piece_x == self.target_x:
+                # 循环调用down，直到新方块出现
+                while True:
+                    # 获取最新状态
+                    state = self.api.get_state()
+                    if not state or state.get('gameOver'):
+                        break
+                    
+                    current_piece = state.get('currentPiece')
+                    if not current_piece:
+                        break
+                    
+                    piece_type = current_piece.get('type')
+                    piece_x = current_piece.get('x', 0)
+                    piece_y = current_piece.get('y', 0)
+                    
+                    # 检测新方块：类型变化，或(方块回到顶部且上次Y>10)
+                    if piece_type != self.last_piece_type or (piece_y <= 1 and self.last_piece_y > 10):
+                        self.log(f"检测到新方块，退出快速下降")
+                        break
+                    
+                    # 发送down
                     self._execute_action(Action.MOVE_DOWN)
                     self.stats.total_actions += 1
-                    time.sleep(0.05)  # 0.05秒间隔，加速下落
+                    self.last_piece_y = piece_y
+                    
+                    # 间隔0.1s
+                    time.sleep(0.1)
+                
+                self.dropping = False
             else:
-                # 队列为空且不在快速下降模式，等待
+                # 不在下降模式，等待
                 time.sleep(0.01)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
-        # 如果已经在处理这个方块，跳过
-        if piece_type == self.last_piece_type and self.action_queue:
-            return
-        
         self.current_piece_id += 1
         self.stats.piece_count += 1
         self.last_piece_type = piece_type
         self.last_piece_y = state.get('currentPiece', {}).get('y', 0)
         self.action_queue = []
-        self.target_x = None  # 重置目标X
+        self.dropping = False  # 重置下降模式
         
         # 构建初始状态
         board = state.get('board', [])
