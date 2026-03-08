@@ -38,8 +38,6 @@ class TetrisAIController:
         self.last_piece_y: int = -1  # 上次方块的Y位置
         self.action_queue: list[Action] = []
         self.current_piece_id = 0
-        self.processing_piece = False  # 标记是否正在处理当前方块
-        self.waiting_for_new_piece = False  # 是否在等待新方块
         
         # 配置日志级别
         self.verbose = True
@@ -112,7 +110,7 @@ class TetrisAIController:
             self._stop()
     
     def _main_loop(self):
-        """主游戏循环 - 当方块在目标正上方时持续down直到新方块"""
+        """主游戏循环 - 简化逻辑，每个方块只处理一次"""
         
         while True:
             # 获取游戏状态
@@ -133,58 +131,39 @@ class TetrisAIController:
                 time.sleep(0.01)
                 continue
             
-            # 检测新方块
+            # 提取方块信息
             piece_type = current_piece.get('type')
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
             
-            # 新方块检测：类型变化，或者方块从底部回到顶部（Y位置显著变化）
-            is_new_piece = False
-            if piece_type != self.last_piece_type:
-                # 类型变化，确定是新方块
-                is_new_piece = True
-            elif self.waiting_for_new_piece and piece_y <= 1 and self.last_piece_y > 5:
-                # 正在等待新方块，且Y位置从高处回到顶部
-                is_new_piece = True
+            # 检测新方块：类型变化，或(队列为空且方块在顶部)
+            is_new_piece = (
+                piece_type != self.last_piece_type or 
+                (not self.action_queue and piece_y <= 1 and self.last_piece_y > 10)
+            )
             
             if is_new_piece:
                 self._handle_new_piece(state, piece_type)
-                self.processing_piece = True
-                self.waiting_for_new_piece = False
             
             # 更新上次Y位置
             self.last_piece_y = piece_y
             
-            # 阶段1: 执行动作队列（旋转和水平移动）
+            # 执行动作队列
             if self.action_queue:
-                # 检查是否只剩 hard_drop 或已经在目标位置正上方
-                non_drop_actions = [a for a in self.action_queue if a != Action.HARD_DROP]
-                
-                if not non_drop_actions and Action.HARD_DROP in self.action_queue:
-                    # 只剩 hard_drop 了，执行硬降并进入等待模式
-                    self.action_queue = []
-                    self.waiting_for_new_piece = True
-                    self.log(f"执行硬降，开始等待新方块")
-                else:
-                    # 执行一个动作（旋转或水平移动）
-                    action = self.action_queue.pop(0)
-                    self._execute_action(action)
-                    self.stats.total_actions += 1
-                    time.sleep(0.01)
-                    continue
-            
-            # 阶段2: 如果正在等待新方块，且当前方块还在，持续down加速下落
-            if self.waiting_for_new_piece:
-                # 还在等待新方块，执行down加速
-                self._execute_action(Action.MOVE_DOWN)
+                action = self.action_queue.pop(0)
+                self._execute_action(action)
                 self.stats.total_actions += 1
-                time.sleep(0.05)  # 0.05秒间隔，比自然下落快
+                time.sleep(0.01)
             else:
-                # 不在目标位置，等待
+                # 队列为空，等待新方块
                 time.sleep(0.01)
     
     def _handle_new_piece(self, state: dict, piece_type: str):
         """处理新方块"""
+        # 如果已经在处理这个方块，跳过
+        if piece_type == self.last_piece_type and self.action_queue:
+            return
+        
         self.current_piece_id += 1
         self.stats.piece_count += 1
         self.last_piece_type = piece_type
