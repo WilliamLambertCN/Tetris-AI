@@ -203,9 +203,10 @@ class TetrisAIController:
         print(f"📍 初始位置: X={piece_x}, Y={piece_y}")
         print(f"📊 当前棋盘非零格数: {sum(sum(row) for row in board)}")
         
-        # 打印棋盘顶部几行
-        print("🎮 当前棋盘顶部:")
-        for i in range(min(5, len(board))):
+        # 打印完整棋盘（或底部10行）
+        print("🎮 当前棋盘状态（底部10行）:")
+        start_row = max(0, len(board) - 10)
+        for i in range(start_row, len(board)):
             row_str = ''.join(['█' if cell else '·' for cell in board[i]])
             print(f"  Row {i:2d}: {row_str}")
         
@@ -245,9 +246,10 @@ class TetrisAIController:
                 print(f"📊 评估分数: {self.ai.last_evaluation:+.2f}")
                 print(f"🔥 将消除行数: {lines_cleared}")
                 
-                # 打印放置后的棋盘顶部
-                print("🎮 放置后方块后的棋盘顶部:")
-                for i in range(min(5, len(final_board))):
+                # 打印放置后的棋盘（底部10行）
+                print("🎮 放置后方块后的棋盘状态（底部10行）:")
+                start_row = max(0, len(final_board) - 10)
+                for i in range(start_row, len(final_board)):
                     row_str = ''.join(['█' if cell else '·' for cell in final_board[i]])
                     print(f"  Row {i:2d}: {row_str}")
                 
