@@ -3,6 +3,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import authRoutes from './routes/auth.js';
 import scoresRoutes from './routes/scores.js';
+import aiRoutes from './routes/ai.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -14,6 +15,7 @@ app.use(bodyParser.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scores', scoresRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
