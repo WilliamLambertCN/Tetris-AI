@@ -92,6 +92,16 @@ class TetrisState:
     piece_x: int
     piece_y: int
     rotation: int
+    
+    def copy(self):
+        """复制状态"""
+        return TetrisState(
+            board=copy.deepcopy(self.board),
+            piece_type=self.piece_type,
+            piece_x=self.piece_x,
+            piece_y=self.piece_y,
+            rotation=self.rotation
+        )
 
 
 def get_column_heights(board: List[List[int]]) -> List[int]:
