@@ -226,7 +226,7 @@ const checkLines = (board) => {
 };
 
 // GameContext
-const GameContext = createContext();
+export const GameContext = createContext();
 
 export function GameProvider({ children }) {
     const boardCanvasRef = useRef(null);
