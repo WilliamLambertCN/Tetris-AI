@@ -18,6 +18,20 @@ let gameMode = 'MANUAL';
 // 当前游戏状态（由前端通过 POST 上报）
 let currentGameState = null;
 
+// AI 思考状态（由 AI 上报，供前端可视化）
+let aiThinkingState = {
+    isThinking: false,
+    currentPiece: null,
+    targetX: null,
+    targetY: null,
+    targetRotation: null,
+    plannedActions: [],
+    searchNodes: 0,
+    searchTime: 0,
+    evaluationScore: 0,
+    timestamp: 0
+};
+
 /**
  * 初始化空棋盘
  */
@@ -233,6 +247,47 @@ router.post('/reset', (req, res) => {
     gameMode = 'MANUAL';
     
     res.json({ message: 'Game reset' });
+});
+
+/**
+ * POST /api/ai/thinking
+ * AI 上报思考状态（供前端可视化）
+ */
+router.post('/thinking', (req, res) => {
+    const { 
+        isThinking, 
+        currentPiece,
+        targetX, 
+        targetY, 
+        targetRotation,
+        plannedActions,
+        searchNodes,
+        searchTime,
+        evaluationScore
+    } = req.body;
+    
+    aiThinkingState = {
+        isThinking: isThinking ?? aiThinkingState.isThinking,
+        currentPiece: currentPiece ?? aiThinkingState.currentPiece,
+        targetX: targetX ?? aiThinkingState.targetX,
+        targetY: targetY ?? aiThinkingState.targetY,
+        targetRotation: targetRotation ?? aiThinkingState.targetRotation,
+        plannedActions: plannedActions ?? aiThinkingState.plannedActions,
+        searchNodes: searchNodes ?? aiThinkingState.searchNodes,
+        searchTime: searchTime ?? aiThinkingState.searchTime,
+        evaluationScore: evaluationScore ?? aiThinkingState.evaluationScore,
+        timestamp: Date.now()
+    };
+    
+    res.json({ message: 'Thinking state updated' });
+});
+
+/**
+ * GET /api/ai/thinking
+ * 获取 AI 思考状态（前端可视化使用）
+ */
+router.get('/thinking', (req, res) => {
+    res.json(aiThinkingState);
 });
 
 /**

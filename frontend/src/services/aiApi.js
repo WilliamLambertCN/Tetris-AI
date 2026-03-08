@@ -7,7 +7,7 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080/api';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -53,6 +53,11 @@ export const aiApi = {
      * @param {string} action - 动作名称
      */
     sendAction: (action) => api.post('/ai/action', { action }),
+
+    /**
+     * 获取 AI 思考状态（可视化）
+     */
+    getThinking: () => api.get('/ai/thinking'),
 
     /**
      * 开始新游戏

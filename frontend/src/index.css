@@ -138,6 +138,12 @@ button:hover {
 .ai-panel {
     border: 2px solid #00ff66;
     background: rgba(0, 255, 102, 0.1);
+    transition: all 0.3s ease;
+}
+
+.ai-panel.ai-active {
+    border-color: #00ff66;
+    box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
 }
 
 .ai-panel h3 {
@@ -151,10 +157,87 @@ button:hover {
     color: #ccc;
 }
 
+/* AI 可视化区域 */
+.ai-visualization {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+/* AI 思考中动画 */
+.ai-thinking-indicator {
+    color: #00ff66;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* AI 统计信息 */
+.ai-stats {
+    color: #888;
+    margin-bottom: 5px;
+}
+
+.ai-target {
+    color: #00f5ff;
+    margin-bottom: 5px;
+}
+
+/* AI 动作队列 */
+.ai-actions {
+    margin-top: 8px;
+}
+
+.action-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+}
+
+.action-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.action-badge.next {
+    background: rgba(0, 255, 102, 0.5);
+    border: 1px solid #00ff66;
+}
+
+.action-more {
+    color: #666;
+    padding: 0 4px;
+}
+
 button.ai-active {
     background: linear-gradient(135deg, #00ff66 0%, #00cc52 100%);
 }
 
 button.ai-active:hover {
     box-shadow: 0 4px 15px rgba(0, 255, 102, 0.4);
+}
+
+/* 游戏区域包装器 */
+.game-area {
+    position: relative;
 }

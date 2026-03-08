@@ -89,6 +89,64 @@ class TetrisAPI:
         return response.json()
     
     # ============================================
+    # AI 思考状态上报（可视化）
+    # ============================================
+    
+    def report_thinking(
+        self,
+        is_thinking: bool = False,
+        current_piece: Optional[Dict] = None,
+        target_x: Optional[int] = None,
+        target_y: Optional[int] = None,
+        target_rotation: Optional[int] = None,
+        planned_actions: Optional[List[str]] = None,
+        search_nodes: int = 0,
+        search_time: float = 0,
+        evaluation_score: float = 0
+    ) -> Dict[str, Any]:
+        """
+        上报 AI 思考状态（供前端可视化）
+        
+        Args:
+            is_thinking: 是否正在思考
+            current_piece: 当前方块信息
+            target_x: 目标 X 坐标
+            target_y: 目标 Y 坐标
+            target_rotation: 目标旋转状态
+            planned_actions: 计划的动作列表
+            search_nodes: 搜索节点数
+            search_time: 搜索耗时（毫秒）
+            evaluation_score: 评估分数
+        """
+        try:
+            response = self.session.post(
+                f"{self.base_url}/ai/thinking",
+                json={
+                    "isThinking": is_thinking,
+                    "currentPiece": current_piece,
+                    "targetX": target_x,
+                    "targetY": target_y,
+                    "targetRotation": target_rotation,
+                    "plannedActions": planned_actions or [],
+                    "searchNodes": search_nodes,
+                    "searchTime": search_time,
+                    "evaluationScore": evaluation_score
+                },
+                timeout=1
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException:
+            # 可视化失败不影响主逻辑
+            return {}
+    
+    def get_thinking(self) -> Dict[str, Any]:
+        """获取 AI 思考状态"""
+        response = self.session.get(f"{self.base_url}/ai/thinking")
+        response.raise_for_status()
+        return response.json()
+    
+    # ============================================
     # 动作控制
     # ============================================
     

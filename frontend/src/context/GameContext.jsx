@@ -419,6 +419,15 @@ export function GameProvider({ children }) {
     const [paused, setPaused] = useState(false);             // 暂停标志
     const [aiMode, setAiMode] = useState(false);             // AI 控制模式
     const [aiStatus, setAiStatus] = useState('idle');        // AI 状态
+    const [aiThinking, setAiThinking] = useState({           // AI 思考状态（可视化）
+        isThinking: false,
+        targetX: null,
+        targetY: null,
+        targetRotation: null,
+        plannedActions: [],
+        searchNodes: 0,
+        searchTime: 0
+    });
 
     // 同步 currentPiece 到 ref（用于游戏循环中实时访问）
     useEffect(() => {
@@ -737,6 +746,36 @@ export function GameProvider({ children }) {
     }, [aiMode, gameOver, executeAiAction]);
 
     // ========================================
+    // AI 思考状态轮询（可视化）
+    // ========================================
+    
+    useEffect(() => {
+        if (!aiMode) return;
+        
+        // 定期获取 AI 思考状态
+        const interval = setInterval(async () => {
+            try {
+                const response = await aiApi.getThinking();
+                const thinking = response.data;
+                
+                setAiThinking({
+                    isThinking: thinking.isThinking || false,
+                    targetX: thinking.targetX,
+                    targetY: thinking.targetY,
+                    targetRotation: thinking.targetRotation,
+                    plannedActions: thinking.plannedActions || [],
+                    searchNodes: thinking.searchNodes || 0,
+                    searchTime: thinking.searchTime || 0
+                });
+            } catch (err) {
+                // 静默处理，不影响游戏
+            }
+        }, 100); // 100ms 轮询一次
+        
+        return () => clearInterval(interval);
+    }, [aiMode]);
+
+    // ========================================
     // 键盘事件处理
     // ========================================
     
@@ -785,6 +824,7 @@ export function GameProvider({ children }) {
         paused,
         aiMode,
         aiStatus,
+        aiThinking,
         // Refs（用于 Canvas 绑定）
         boardCanvasRef,
         nextCanvasRef,
