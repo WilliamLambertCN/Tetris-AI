@@ -94,11 +94,12 @@ const rotatePiece = (piece, board) => {
             newShape[col].push(shape[row][col]);
         }
     }
-    const newPiece = { ...piece, shape: newShape.map(row => [...row]) };
+    const newRotation = ((piece.rotation || 0) + 1) % 4;  // 更新 rotation 状态
+    const newPiece = { ...piece, shape: newShape.map(row => [...row]), rotation: newRotation };
     if (collide(newPiece.shape, newPiece.x, newPiece.y, board)) {
         const directions = [-1, 1, -2, 2];
         for (const direction of directions) {
-            const kickedPiece = { ...newPiece, x: newPiece.x + direction };
+            const kickedPiece = { ...newPiece, x: newPiece.x + direction, rotation: newRotation };
             if (!collide(kickedPiece.shape, kickedPiece.x, kickedPiece.y, board)) {
                 return kickedPiece;
             }
@@ -166,7 +167,8 @@ const createPiece = (type) => ({
     shape: SHAPES[type].shape.map(row => [...row]),
     color: SHAPES[type].color,
     x: Math.floor(CONSTANTS.COLS / 2) - Math.ceil(SHAPES[type].shape[0].length / 2),
-    y: 0
+    y: 0,
+    rotation: 0  // 追踪旋转状态，AI 需要
 });
 const spawnPiece = (nextPiece) => {
     const types = getAllPieceTypes();
@@ -233,7 +235,8 @@ export function GameProvider({ children }) {
         targetRotation: null,
         plannedActions: [],
         searchNodes: 0,
-        searchTime: 0
+        searchTime: 0,
+        evaluationScore: 0
     });
 
     useEffect(() => {
@@ -326,6 +329,7 @@ export function GameProvider({ children }) {
                         type: currentPiece.type,
                         x: currentPiece.x,
                         y: currentPiece.y,
+                        rotation: currentPiece.rotation || 0,  // 添加 rotation 字段
                         shape: currentPiece.shape
                     } : null,
                     nextPiece: nextPiece ? {
@@ -434,30 +438,56 @@ export function GameProvider({ children }) {
                 moveDown(); 
                 break;
             case 'hard_drop': {
-                // AI 硬降：使用 boardRef 获取最新 board 状态
+                // AI 硬降：使用 boardRef 获取最新 board 状态并一次性完成
                 console.log('[AI] Hard drop starting');
                 
-                let count = 0;
-                while (count < 30) {
-                    const piece = currentPieceRef.current;
-                    const currentBoard = boardRef.current;
-                    if (!piece || !currentBoard) break;
-                    
-                    // 检查是否还能下落（使用最新 board）
-                    const canMoveDown = !collide(piece.shape, piece.x, piece.y + 1, currentBoard);
-                    if (!canMoveDown) {
-                        // 触底了，执行 lock
-                        console.log('[AI] Hard drop landed at Y:', piece.y);
-                        moveDown(); // 这会触发 lock 和生成新方块
-                        break;
-                    }
-                    
-                    // 下落一格
-                    moveDown();
-                    count++;
+                const piece = currentPieceRef.current;
+                const currentBoard = boardRef.current;
+                
+                if (!piece || !currentBoard) break;
+                
+                // 1. 计算最终落点
+                let dropY = piece.y;
+                while (!collide(piece.shape, piece.x, dropY + 1, currentBoard)) {
+                    dropY++;
                 }
                 
-                console.log('[AI] Hard drop complete, steps:', count);
+                // 2. 构造落地时的方块
+                const landedPiece = { ...piece, y: dropY };
+                
+                // 3. 执行锁定逻辑 (参考 moveDown 的 else 分支)
+                const lockedBoard = lockPiece(currentBoard, landedPiece);
+                const { newBoard, linesCleared } = checkLines(lockedBoard);
+                
+                // 4. 更新分数
+                if (linesCleared > 0) {
+                    const points = [0, 100, 300, 500, 800];
+                    const newScore = score + points[linesCleared] * level;
+                    setScore(newScore);
+                    const newLevel = Math.floor(newScore / CONSTANTS.LEVEL_UP_SCORE) + 1;
+                    if (newLevel > level) {
+                        setLevel(newLevel);
+                        dropIntervalRef.current = Math.max(
+                            CONSTANTS.MIN_DROP_INTERVAL,
+                            CONSTANTS.INITIAL_DROP_INTERVAL - (newLevel - 1) * 100
+                        );
+                    }
+                }
+                
+                // 5. 生成新方块
+                const result = spawnPiece(nextPiece);
+                
+                // 6. 批量更新状态
+                setBoard(newBoard);
+                setNextPiece(result.nextPiece);
+                setCurrentPiece(result.currentPiece);
+                
+                // 7. 检查游戏结束
+                if (collide(result.currentPiece.shape, result.currentPiece.x, result.currentPiece.y, newBoard)) {
+                    setGameOver(true);
+                }
+                
+                console.log('[AI] Hard drop complete, landed at Y:', dropY);
                 break;
             }
         }
@@ -548,7 +578,8 @@ export function GameProvider({ children }) {
                     targetRotation: thinking.targetRotation,
                     plannedActions: thinking.plannedActions || [],
                     searchNodes: thinking.searchNodes || 0,
-                    searchTime: thinking.searchTime || 0
+                    searchTime: thinking.searchTime || 0,
+                    evaluationScore: thinking.evaluationScore || 0
                 });
             } catch (err) {}
         }, 50);

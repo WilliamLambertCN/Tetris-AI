@@ -298,14 +298,14 @@ class TetrisAI:
         return actions
 
 
-def create_initial_state(board: List[List[int]], piece_type: str, piece_x: int, piece_y: int) -> TetrisState:
+def create_initial_state(board: List[List[int]], piece_type: str, piece_x: int, piece_y: int, rotation: int = 0) -> TetrisState:
     """创建初始状态"""
     return TetrisState(
         board=copy.deepcopy(board),
         piece_type=piece_type,
         piece_x=piece_x,
         piece_y=piece_y,
-        rotation=0
+        rotation=rotation
     )
 
 

@@ -4,11 +4,11 @@ run_ai.py - A* AI 自动化运行脚本（带详细日志）
 
 import time
 import sys
-from typing import Optional
+from typing import Optional, List
 from dataclasses import dataclass
 
 from api_client import TetrisAPI
-from tetris_ai import TetrisAI, TetrisState, Action, create_initial_state, check_collision
+from tetris_ai import TetrisAI, TetrisState, Action, create_initial_state, check_collision, AStarTetris
 
 
 @dataclass
@@ -111,6 +111,10 @@ class TetrisAIController:
             self._main_loop()
         except KeyboardInterrupt:
             self._stop()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.log(f"CRITICAL ERROR: {e}", "ERROR")
     
     def _main_loop(self):
         """主游戏循环 - 动态调整，确保到达target位置"""
@@ -161,30 +165,31 @@ class TetrisAIController:
                     # 正常情况打印INFO
                     if cell_diff != 0:
                         self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d})")
-            
+
             # 更新记录
             self.last_cell_count = current_cell_count
-            
-            # 检测新方块：类型变化，或(方块在顶部且没有操作flag且上次Y>5)
+
+            # 检测新方块：Y位置回到顶部(<=1)，且上次方块已经下落一段距离(>3)
+            # 这样可以检测同类型连续方块
             is_new_piece = (
                 piece_type != self.last_piece_type or  # 类型变化
-                (piece_y <= 1 and not self.action_queue and self.last_piece_y > 5)  # 同类型新方块
+                (piece_y <= 1 and self.last_piece_y > 3)  # 同类型新方块：Y重置到顶部
             )
-            
+
             if is_new_piece:
                 # 如果是同一类型，打印提示
                 if piece_type == self.last_piece_type:
-                    self.log(f"检测到同类型新方块: {piece_type}")
+                    self.log(f"检测到同类型新方块: {piece_type} (Y从{self.last_piece_y}重置到{piece_y})")
                 self._handle_new_piece(state, piece_type)
             
             # 更新上次Y位置
             self.last_piece_y = piece_y
-            
-            # 阶段1：执行动作，并根据实时位置动态调整
+
+            # 执行动作队列
             if self.action_queue:
                 # 获取队列中的下一个动作
                 next_action = self.action_queue[0]
-                
+
                 # 如果是水平移动，检查是否偏离目标
                 if next_action in (Action.MOVE_LEFT, Action.MOVE_RIGHT):
                     # 重新计算还需要多少步
@@ -192,55 +197,18 @@ class TetrisAIController:
                     if remaining_actions:
                         self.action_queue = remaining_actions
                         next_action = self.action_queue[0]
-                
+
                 # 执行动作
                 action = self.action_queue.pop(0)
                 self._execute_action(action)
                 self.stats.total_actions += 1
-                
-                # hard_drop后，进入阶段2
-                if action == Action.HARD_DROP:
-                    self.dropping = True
-                    self.log(f"到达目标位置 X={piece_x}，开始while循环下降")
-                
-                time.sleep(0.01)
+
+                time.sleep(0.02)  # 给前端处理时间
                 continue
-            
-            # 阶段2：如果在target正上方且正在下降模式，while循环down直到新方块
-            if self.dropping and piece_x == self.target_x:
-                self.log(f"开始while循环down，间隔0.1s")
-                
-                while True:
-                    # 获取最新状态
-                    state = self.api.get_state()
-                    if not state or state.get('gameOver'):
-                        break
-                    
-                    current_piece = state.get('currentPiece')
-                    if not current_piece:
-                        break
-                    
-                    piece_type_new = current_piece.get('type')
-                    piece_y_new = current_piece.get('y', 0)
-                    
-                    # 检测新方块：类型变化
-                    if piece_type_new != self.last_piece_type:
-                        self.log(f"检测到新方块 {piece_type_new}，退出while循环")
-                        break
-                    
-                    # 发送down加速下落
-                    self._execute_action(Action.MOVE_DOWN)
-                    self.stats.total_actions += 1
-                    self.last_piece_y = piece_y_new
-                    
-                    # 间隔0.1s
-                    time.sleep(0.1)
-                
-                self.dropping = False
-            else:
-                # 不在下降模式，等待
-                time.sleep(0.01)
-    
+
+            # 动作队列为空，等待新方块
+            time.sleep(0.01)
+
     def _recalculate_actions(self, state: dict) -> list:
         """根据当前位置重新计算动作"""
         current_piece = state.get('currentPiece')
@@ -277,13 +245,13 @@ class TetrisAIController:
         self.last_piece_type = piece_type
         self.last_piece_y = state.get('currentPiece', {}).get('y', 0)
         self.action_queue = []
-        self.dropping = False  # 重置下降模式
-        
+
         # 构建初始状态
         board = state.get('board', [])
         piece_x = state.get('currentPiece', {}).get('x', 0)
         piece_y = state.get('currentPiece', {}).get('y', 0)
-        
+        piece_rotation = state.get('currentPiece', {}).get('rotation', 0)  # 获取前端当前 rotation
+
         if not board or len(board) != 20:
             self.log(f"棋盘数据异常: {len(board) if board else 'None'} 行", "ERROR")
             return
@@ -316,22 +284,22 @@ class TetrisAIController:
         for i in range(start_row, len(board)):
             row_str = ''.join(['█' if cell else '·' for cell in board[i]])
             print(f"  Row {i:2d}: {row_str}")
-        
-        ai_state = create_initial_state(board, piece_type, piece_x, piece_y)
-        
+
+        ai_state = create_initial_state(board, piece_type, piece_x, piece_y, piece_rotation)
+
         # 运行 A* 搜索
         start_time = time.time()
         actions = self.ai.find_best_placement(ai_state)
         search_time = time.time() - start_time
-        
+
         if actions:
             self.action_queue = actions
-            
+
             # 计算目标位置
             target_pos = self._calculate_target(ai_state, actions)
             self.target_x = target_pos['x']  # 设置目标X位置
-            
-            print(f"[DEBUG] New actions: {[a.value for a in actions]}, target_x={self.target_x}")
+
+            print(f"[DEBUG] New actions: {[a.value for a in actions]}, target_x={self.target_x}, current_rotation={piece_rotation}")
             
             # 模拟放置后的棋盘
             from tetris_ai import simulate_place, clear_lines
@@ -414,14 +382,14 @@ class TetrisAIController:
     def _adjust_actions(self, state: dict):
         """不再使用复杂调整逻辑，由主循环处理"""
         pass
-    
+
     def _execute_action(self, action: Action):
-        """执行动作"""
+        """执行动作 - 所有动作都发送给前端"""
         try:
             self.api.send_action(action.value)
         except Exception as e:
             self.log(f"❌ 执行动作失败 {action.value}: {e}", "ERROR")
-    
+
     def _handle_game_over(self, state: dict):
         """处理游戏结束"""
         score = state.get('score', 0)
