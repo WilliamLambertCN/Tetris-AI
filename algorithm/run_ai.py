@@ -146,25 +146,26 @@ class TetrisAIController:
             # 计算当前棋盘非零格数
             board = state.get('board', [])
             current_cell_count = sum(sum(row) for row in board)
-            
+
             # 检查方块数变化是否异常
             if self.last_cell_count > 0:
                 cell_diff = current_cell_count - self.last_cell_count
-                
+
                 # 正常情况下：
-                # 1. 放置新方块：+4（俄罗斯方块都是4格）
-                # 2. 消除整行：-10（每行10格）
-                
-                # 如果减少的不是10的倍数，说明有异常消除
-                if cell_diff < 0 and cell_diff % 10 != 0:
-                    self.log(f"ERROR: 异常消除！方块数变化: {cell_diff} (上次: {self.last_cell_count}, 本次: {current_cell_count})", "ERROR")
-                    self.log(f"ERROR: 减少的格子数不是10的倍数，疑似bug！", "ERROR")
-                elif cell_diff > 0 and cell_diff != 4:
-                    self.log(f"WARN: 方块增加数异常: +{cell_diff} (期望+4)", "WARN")
+                # 1. 新方块出现：+4（俄罗斯方块都是4格）
+                # 2. 消除整行后新方块：-10*n + 4（n为消除行数）
+                # 所以正常变化为：+4, -6, -16, -26, -36（对应消除0,1,2,3,4行）
+
+                # 检查是否是合法的变化值
+                valid_changes = [4, -6, -16, -26, -36]  # 消除0,1,2,3,4行 + 新方块4格
+                if cell_diff not in valid_changes:
+                    lines_cleared = (4 - cell_diff) // 10 if cell_diff < 0 else 0
+                    self.log(f"WARN: 方块数变化异常: {cell_diff:+d} (期望: +4/-6/-16/-26/-36)", "WARN")
                 else:
                     # 正常情况打印INFO
                     if cell_diff != 0:
-                        self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d})")
+                        lines_cleared = (4 - cell_diff) // 10 if cell_diff < 0 else 0
+                        self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d}, 消除{lines_cleared}行)")
 
             # 更新记录
             self.last_cell_count = current_cell_count
