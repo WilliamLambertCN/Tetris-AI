@@ -137,38 +137,14 @@ class TetrisAIController:
             if not current_piece:
                 time.sleep(0.01)
                 continue
-            
+
             # 提取方块信息
             piece_type = current_piece.get('type')
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
-            
+
             # 计算当前棋盘非零格数
             board = state.get('board', [])
-            current_cell_count = sum(sum(row) for row in board)
-
-            # 检查方块数变化是否异常
-            if self.last_cell_count > 0:
-                cell_diff = current_cell_count - self.last_cell_count
-
-                # 正常情况下：
-                # 1. 新方块出现：+4（俄罗斯方块都是4格）
-                # 2. 消除整行后新方块：-10*n + 4（n为消除行数）
-                # 所以正常变化为：+4, -6, -16, -26, -36（对应消除0,1,2,3,4行）
-
-                # 检查是否是合法的变化值
-                valid_changes = [4, -6, -16, -26, -36]  # 消除0,1,2,3,4行 + 新方块4格
-                if cell_diff not in valid_changes:
-                    lines_cleared = (4 - cell_diff) // 10 if cell_diff < 0 else 0
-                    self.log(f"WARN: 方块数变化异常: {cell_diff:+d} (期望: +4/-6/-16/-26/-36)", "WARN")
-                else:
-                    # 正常情况打印INFO
-                    if cell_diff != 0:
-                        lines_cleared = (4 - cell_diff) // 10 if cell_diff < 0 else 0
-                        self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d}, 消除{lines_cleared}行)")
-
-            # 更新记录
-            self.last_cell_count = current_cell_count
 
             # 检测新方块：Y位置回到顶部(<=1)，且上次方块已经下落一段距离(>3)
             # 这样可以检测同类型连续方块
@@ -178,6 +154,20 @@ class TetrisAIController:
             )
 
             if is_new_piece:
+                # 计算棋盘格子数并检查变化
+                current_cell_count = sum(sum(row) for row in board)
+
+                if self.last_cell_count > 0:
+                    cell_diff = current_cell_count - self.last_cell_count
+                    valid_changes = [4, -6, -16, -26, -36]  # 消除0,1,2,3,4行 + 新方块4格
+                    if cell_diff not in valid_changes:
+                        self.log(f"WARN: 方块数变化异常: {cell_diff:+d} (期望: +4/-6/-16/-26/-36)", "WARN")
+                    elif cell_diff != 0:
+                        lines_cleared = (4 - cell_diff) // 10 if cell_diff < 0 else 0
+                        self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d}, 消除{lines_cleared}行)")
+
+                self.last_cell_count = current_cell_count
+
                 # 如果是同一类型，打印提示
                 if piece_type == self.last_piece_type:
                     self.log(f"检测到同类型新方块: {piece_type} (Y从{self.last_piece_y}重置到{piece_y})")
