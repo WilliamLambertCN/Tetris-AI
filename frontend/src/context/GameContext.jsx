@@ -161,6 +161,7 @@ const drawNextPiece = (ctx, nextPiece, blockSize = 20) => {
     }
 };
 
+let pieceIdCounter = 0;  // 全局方块 ID 计数器
 const getAllPieceTypes = () => Object.keys(SHAPES);
 const createPiece = (type) => ({
     type,
@@ -168,7 +169,8 @@ const createPiece = (type) => ({
     color: SHAPES[type].color,
     x: Math.floor(CONSTANTS.COLS / 2) - Math.ceil(SHAPES[type].shape[0].length / 2),
     y: 0,
-    rotation: 0  // 追踪旋转状态，AI 需要
+    rotation: 0,  // 追踪旋转状态，AI 需要
+    id: ++pieceIdCounter  // 唯一 ID，用于区分同类型新方块
 });
 const spawnPiece = (nextPiece) => {
     const types = getAllPieceTypes();
@@ -322,18 +324,20 @@ export function GameProvider({ children }) {
                 const binaryBoard = board.map(row =>
                     row.map(cell => cell ? 1 : 0)
                 );
-                
+
                 await aiApi.reportState({
                     board: binaryBoard,
                     currentPiece: currentPiece ? {
                         type: currentPiece.type,
+                        id: currentPiece.id,  // 唯一 ID
                         x: currentPiece.x,
                         y: currentPiece.y,
-                        rotation: currentPiece.rotation || 0,  // 添加 rotation 字段
+                        rotation: currentPiece.rotation || 0,
                         shape: currentPiece.shape
                     } : null,
                     nextPiece: nextPiece ? {
                         type: nextPiece.type,
+                        id: nextPiece.id,
                         shape: nextPiece.shape
                     } : null,
                     score,

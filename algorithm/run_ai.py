@@ -28,20 +28,19 @@ class GameStats:
 
 class TetrisAIController:
     """AI 游戏控制器（带详细日志）"""
-    
+
     def __init__(self, api_base_url: str = "http://127.0.0.1:8080/api"):
         self.api = TetrisAPI(api_base_url)
         self.ai = TetrisAI()  # 使用简化版 AI
         self.ai.debug = True  # 启用调试输出
         self.stats = GameStats()
         self.last_piece_type: Optional[str] = None
+        self.last_piece_id: Optional[int] = None  # 上次方块的唯一 ID
         self.last_piece_y: int = -1  # 上次方块的Y位置
         self.action_queue: list[Action] = []
-        self.current_piece_id = 0
-        self.dropping = False  # 是否处于快速下降模式
+        self.current_piece_id = 0  # AI 内部计数器
         self.last_cell_count: int = 0  # 上次棋盘非零格数
-        self.total_cells_placed: int = 0  # 总共放置的格子数
-        
+
         # 配置日志级别
         self.verbose = True
     
@@ -140,18 +139,15 @@ class TetrisAIController:
 
             # 提取方块信息
             piece_type = current_piece.get('type')
+            piece_id = current_piece.get('id')  # 获取唯一 ID
             piece_x = current_piece.get('x', 0)
             piece_y = current_piece.get('y', 0)
 
             # 计算当前棋盘非零格数
             board = state.get('board', [])
 
-            # 检测新方块：Y位置回到顶部(<=1)，且上次方块已经下落一段距离(>3)
-            # 这样可以检测同类型连续方块
-            is_new_piece = (
-                piece_type != self.last_piece_type or  # 类型变化
-                (piece_y <= 1 and self.last_piece_y > 3)  # 同类型新方块：Y重置到顶部
-            )
+            # 检测新方块：使用唯一 ID，这是最可靠的方式
+            is_new_piece = piece_id != self.last_piece_id
 
             if is_new_piece:
                 # 计算棋盘格子数并检查变化
@@ -167,12 +163,10 @@ class TetrisAIController:
                         self.log(f"方块数变化: {self.last_cell_count} -> {current_cell_count} ({cell_diff:+d}, 消除{lines_cleared}行)")
 
                 self.last_cell_count = current_cell_count
+                self.last_piece_id = piece_id  # 更新 ID
 
-                # 如果是同一类型，打印提示
-                if piece_type == self.last_piece_type:
-                    self.log(f"检测到同类型新方块: {piece_type} (Y从{self.last_piece_y}重置到{piece_y})")
                 self._handle_new_piece(state, piece_type)
-            
+
             # 更新上次Y位置
             self.last_piece_y = piece_y
 
@@ -260,13 +254,16 @@ class TetrisAIController:
                 # 允许 +4 (无消除) 或 -6 (消除1行: +4-10)
                 if actual_change < 0 and actual_change % 10 != (expected_increase % 10):
                     self.log(f"ERROR: 新方块出现时格子数异常！变化: {actual_change} (期望 +4 或 -6)", "ERROR")
-        
+
         self.last_cell_count = current_cell_count
-        
+
+        # 获取方块 ID
+        piece_id = state.get('currentPiece', {}).get('id', 'unknown')
+
         # 打印初始棋盘状态
         print(f"\n{'='*60}")
-        print(f"🎲 新方块 #{self.current_piece_id}: {piece_type}")
-        print(f"📍 初始位置: X={piece_x}, Y={piece_y}")
+        print(f"🎲 新方块 #{self.current_piece_id}: {piece_type} (id={piece_id})")
+        print(f"📍 初始位置: X={piece_x}, Y={piece_y}, rotation={piece_rotation}")
         print(f"📊 当前棋盘非零格数: {current_cell_count}")
         
         # 打印完整棋盘（或底部10行）
